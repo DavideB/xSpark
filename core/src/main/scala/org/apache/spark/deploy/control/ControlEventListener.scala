@@ -48,9 +48,15 @@ class ControlEventListener(conf: SparkConf) extends SparkListener with Logging {
   val DEADLINE: Int = conf.get("spark.control.deadline").toInt
   var executorNeeded: Int = conf.get("spark.control.maxexecutor").toInt
   var coreForVM: Int = conf.get("spark.control.coreforvm").toInt
-  val coreMin: Double = conf.getDouble("spark.control.coremin", 0.0)
+  var coreMin: Double = conf.getDouble("spark.control.coremin", 0.0)
 
   val BETA : Double = conf.get("spark.control.beta").toDouble
+  
+  var stageToCoresConf : Map[Int, Double] = Map[Int, Double]()
+  if (conf.contains("spark.control.stagecores")) {
+    val stageCores: List[Double] = conf.get("spark.control.stagecores").replace("[", "").replace("]","").split(',').toList.map(_.trim).map(_.toDouble)
+    stageToCoresConf = ((0 until stageCores.length) zip stageCores).toMap
+  }
   
   // Master
   def master: String = conf.get("spark.master")
@@ -660,11 +666,17 @@ class ControlEventListener(conf: SparkConf) extends SparkListener with Logging {
       val coreForExecutors = controller.computeCoreForExecutors(stageIdToCore(stageId),
         lastStage)
       logInfo(coreForExecutors.toString())
-      val coreToStart = coreForExecutors(index)
       val taskForExecutorId = controller.computeTaskForExecutors(
         stageIdToCore(stageId),
         stageIdToInfo(stageId).numTasks, lastStage)(index)
-      val maxCore = math.min(coreToStart * controller.OVERSCALE, coreForVM)
+      
+      // change coreToStart, maxCore and coreMin to spark.control.stagecores
+      val coreToStart = if(stageToCoresConf.isEmpty) coreForExecutors(index) else stageToCoresConf(stageId)
+      val maxCore = if(stageToCoresConf.isEmpty) math.min(coreToStart * controller.OVERSCALE, coreForVM) else stageToCoresConf(stageId)
+      if (!stageToCoresConf.isEmpty){
+        coreMin = stageToCoresConf(stageId)
+      }
+      
       controller.scaleExecutor(workerUrl, appid, executorAssigned.executorId, coreToStart)
       controller.initControllerExecutor(
         workerUrl,
