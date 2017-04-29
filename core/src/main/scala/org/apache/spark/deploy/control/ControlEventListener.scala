@@ -53,11 +53,17 @@ class ControlEventListener(conf: SparkConf) extends SparkListener with Logging {
   val BETA : Double = conf.get("spark.control.beta").toDouble
   
   var stageToCoresConf : Map[Int, Double] = Map[Int, Double]()
-  if (conf.contains("spark.control.stagecores")) {
+  var stageToDeadlinesConf : Map[Int, Long] = Map[Int, Long]()
+
+  if (conf.contains("spark.control.stagecores") && conf.contains("spark.control.stagedealines")) {
     val stageCores: List[Double] = conf.get("spark.control.stagecores").replace("[", "").replace("]","").split(',').toList.map(_.trim).map(_.toDouble)
     stageToCoresConf = ((0 until stageCores.length) zip stageCores).toMap
+    val stageDeadlines: List[Long] = conf.get("spark.control.stagedealines").replace("[", "").replace("]","").split(',').toList.map(_.trim).map(_.toLong)
+    stageToDeadlinesConf = ((0 until stageDeadlines.length) zip stageDeadlines).toMap
   }
-  
+
+
+
   // Master
   def master: String = conf.get("spark.master")
 
@@ -676,7 +682,8 @@ class ControlEventListener(conf: SparkConf) extends SparkListener with Logging {
       if (!stageToCoresConf.isEmpty){
         coreMin = stageToCoresConf(stageId)
       }
-      
+      val deadline = if(stageToCoresConf.isEmpty) stageIdToDeadline(stageId) else stageToDeadlinesConf(stageId)
+
       controller.scaleExecutor(workerUrl, appid, executorAssigned.executorId, coreToStart)
       controller.initControllerExecutor(
         workerUrl,
@@ -684,7 +691,7 @@ class ControlEventListener(conf: SparkConf) extends SparkListener with Logging {
         stageId,
         coreMin = coreMin,
         maxCore,
-        stageIdToDeadline(stageId),
+        deadline,
         coreToStart,
         taskForExecutorId)
     } else {
