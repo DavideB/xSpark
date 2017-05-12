@@ -116,9 +116,10 @@ class ControllerJob(conf: SparkConf, appDeadlineJobMillisecond: Long) extends Lo
   }
 
   def computeTaskForExecutors(coresToBeAllocated: Int, totalTasksStage: Int,
-                              last: Boolean): List[Int] = {
+                              last: Boolean,
+                              ignoreNumExecutor: Boolean = false): List[Int] = {
     numExecutor = math.ceil(coresToBeAllocated.toDouble / coreForVM.toDouble).toInt
-    if (numExecutor > numMaxExecutor) {
+    if (numExecutor > numMaxExecutor && !ignoreNumExecutor) {
       logError("NUM EXECUTORS TOO HIGH: %d > NUM MAX EXECUTORS %d".format(
         numExecutor, numMaxExecutor
       ))

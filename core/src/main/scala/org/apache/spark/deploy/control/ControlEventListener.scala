@@ -673,9 +673,13 @@ class ControlEventListener(conf: SparkConf) extends SparkListener with Logging {
       val coreForExecutors = controller.computeCoreForExecutors(stageIdToCore(stageId),
         lastStage)
       logInfo(coreForExecutors.toString())
-      val taskForExecutorId = controller.computeTaskForExecutors(
-        stageIdToCore(stageId),
-        stageIdToInfo(stageId).numTasks, lastStage)(index)
+      val taskForExecutorId = if(stageToCoresConf.isEmpty) controller.computeTaskForExecutors(stageIdToCore(stageId),
+                                                                                              stageIdToInfo(stageId).numTasks, 
+                                                                                              lastStage)(index)
+        else controller.computeTaskForExecutors(stageIdToCore(stageId),
+                                                stageIdToInfo(stageId).numTasks,
+                                                lastStage,
+                                                true)(index)
       
       // change coreToStart, maxCore and coreMin to spark.control.stagecores
       val coreToStart = if(stageToCoresConf.isEmpty) coreForExecutors(index) else stageToCoresConf(stageId)
