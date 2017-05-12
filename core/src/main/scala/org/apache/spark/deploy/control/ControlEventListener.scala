@@ -87,7 +87,7 @@ class ControlEventListener(conf: SparkConf) extends SparkListener with Logging {
   val stageIdToActiveJobIds = new HashMap[Int, HashSet[Int]]
 
   val stageIdToDeadline = new HashMap[Int, Long]
-  val stageIdToCore = new HashMap[Int, Int]
+  val stageIdToCore = new HashMap[Int, Double]
   val stageIdToDuration = new HashMap[Int, Long]
   val stageIdToNumRecords = new HashMap[Int, Long]
   val stageIdToParentsIds = new HashMap[Int, List[Int]]
@@ -364,11 +364,15 @@ class ControlEventListener(conf: SparkConf) extends SparkListener with Logging {
         stageIdToCore(stage.stageId) = controller.computeCoreFirstStage(stage)
         stageIdsToComputeNominalRecord.add(stage.stageId)
       }
+      
       val lastStage = stage.stageId == lastStageId
       if (stage.stageId == lastStageId) {
         stageIdToCore(stage.stageId) = controller.fixCoreLastStage(stage.stageId, deadlineStage,
           stageIdToNumRecords(stage.stageId))
       }
+
+      if (!stageToCoresConf.isEmpty)
+          stageIdToCore(stage.stageId) = stageToCoresConf(stage.stageId)
       // ASK MASTER NEEDED EXECUTORS
       val coreForExecutors = controller.computeCoreForExecutors(stageIdToCore(stage.stageId), lastStage)
       controller.askMasterNeededExecutors(master, firstStageId, coreForExecutors, appid)
