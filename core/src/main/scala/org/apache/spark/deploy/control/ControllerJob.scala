@@ -115,7 +115,7 @@ class ControllerJob(conf: SparkConf, appDeadlineJobMillisecond: Long) extends Lo
     }
   }
 
-  def computeTaskForExecutors(coresToBeAllocated: Int, totalTasksStage: Int,
+  def computeTaskForExecutors(coresToBeAllocated: Double, totalTasksStage: Int,
                               last: Boolean,
                               ignoreNumExecutor: Boolean = false): List[Int] = {
     numExecutor = math.ceil(coresToBeAllocated.toDouble / coreForVM.toDouble).toInt
