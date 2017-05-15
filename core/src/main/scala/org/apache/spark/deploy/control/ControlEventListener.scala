@@ -55,12 +55,13 @@ class ControlEventListener(conf: SparkConf) extends SparkListener with Logging {
   var stageToCoresConf : Map[Int, Double] = Map[Int, Double]()
   var stageToDeadlinesConf : Map[Int, Long] = Map[Int, Long]()
 
-  if (conf.contains("spark.control.stagecores") && conf.contains("spark.control.stagedeadlines")) {
+  if (conf.contains("spark.control.stagecores") && conf.contains("spark.control.stagedeadlines") && conf.contains("spark.control.stage")) {
     logInfo("USING FIXED CORE ALLOCATION / DEADLINES");
+    val stagesToFix: List[Int] = conf.get("spark.control.stage").replace("[", "").replace("]","").split(',').toList.map(_.trim).map(_.toInt)
     val stageCores: List[Double] = conf.get("spark.control.stagecores").replace("[", "").replace("]","").split(',').toList.map(_.trim).map(_.toDouble)
-    stageToCoresConf = ((0 until stageCores.length) zip stageCores).toMap
+    stageToCoresConf = (stagesToFix zip stageCores).toMap
     val stageDeadlines: List[Long] = conf.get("spark.control.stagedeadlines").replace("[", "").replace("]","").split(',').toList.map(_.trim).map(_.toLong)
-    stageToDeadlinesConf = ((0 until stageDeadlines.length) zip stageDeadlines).toMap
+    stageToDeadlinesConf = (stagesToFix zip stageDeadlines).toMap
   }
 
 
