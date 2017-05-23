@@ -1,7 +1,7 @@
 ---
 layout: global
-title: PMML model export - RDD-based API
-displayTitle: PMML model export - RDD-based API
+title: PMML model export - spark.mllib
+displayTitle: PMML model export - spark.mllib
 ---
 
 * Table of contents

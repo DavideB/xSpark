@@ -35,7 +35,7 @@ object NaiveBayesExample {
     val data = spark.read.format("libsvm").load("data/mllib/sample_libsvm_data.txt")
 
     // Split the data into training and test sets (30% held out for testing)
-    val Array(trainingData, testData) = data.randomSplit(Array(0.7, 0.3), seed = 1234L)
+    val Array(trainingData, testData) = data.randomSplit(Array(0.7, 0.3))
 
     // Train a NaiveBayes model.
     val model = new NaiveBayes()

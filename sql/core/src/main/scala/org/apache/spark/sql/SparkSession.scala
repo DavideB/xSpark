@@ -25,7 +25,7 @@ import scala.reflect.ClassTag
 import scala.reflect.runtime.universe.TypeTag
 import scala.util.control.NonFatal
 
-import org.apache.spark.{SPARK_VERSION, SparkConf, SparkContext}
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.annotation.{DeveloperApi, Experimental}
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.internal.Logging
@@ -64,7 +64,7 @@ import org.apache.spark.util.Utils
  *   SparkSession.builder()
  *     .master("local")
  *     .appName("Word Count")
- *     .config("spark.some.config.option", "some-value")
+ *     .config("spark.some.config.option", "some-value").
  *     .getOrCreate()
  * }}}
  */
@@ -78,13 +78,6 @@ class SparkSession private(
   }
 
   sparkContext.assertNotStopped()
-
-  /**
-   * The version of Spark on which this application is running.
-   *
-   * @since 2.0.0
-   */
-  def version: String = SPARK_VERSION
 
   /* ----------------------- *
    |  Session-related state  |
@@ -115,11 +108,9 @@ class SparkSession private(
 
   /**
    * A wrapped version of this session in the form of a [[SQLContext]], for backward compatibility.
-   *
-   * @since 2.0.0
    */
   @transient
-  val sqlContext: SQLContext = new SQLContext(this)
+  private[sql] val sqlContext: SQLContext = new SQLContext(this)
 
   /**
    * Runtime configuration interface for Spark.
@@ -187,13 +178,13 @@ class SparkSession private(
 
   /**
    * :: Experimental ::
-   * Returns a [[StreamingQueryManager]] that allows managing all the
-   * [[StreamingQuery StreamingQueries]] active on `this`.
+   * Returns a [[ContinuousQueryManager]] that allows managing all the
+   * [[ContinuousQuery ContinuousQueries]] active on `this`.
    *
    * @since 2.0.0
    */
   @Experimental
-  def streams: StreamingQueryManager = sessionState.streamingQueryManager
+  def streams: ContinuousQueryManager = sessionState.continuousQueryManager
 
   /**
    * Start a new session with isolated SQL configurations, temporary tables, registered
@@ -583,8 +574,7 @@ class SparkSession private(
   }
 
   /**
-   * Returns a [[DataFrameReader]] that can be used to read non-streaming data in as a
-   * [[DataFrame]].
+   * Returns a [[DataFrameReader]] that can be used to read data and streams in as a [[DataFrame]].
    * {{{
    *   sparkSession.read.parquet("/path/to/file.parquet")
    *   sparkSession.read.schema(schema).json("/path/to/file.json")
@@ -593,19 +583,6 @@ class SparkSession private(
    * @since 2.0.0
    */
   def read: DataFrameReader = new DataFrameReader(self)
-
-  /**
-   * :: Experimental ::
-   * Returns a [[DataStreamReader]] that can be used to read streaming data in as a [[DataFrame]].
-   * {{{
-   *   sparkSession.readStream.parquet("/path/to/directory/of/parquet/files")
-   *   sparkSession.readStream.schema(schema).json("/path/to/directory/of/json/files")
-   * }}}
-   *
-   * @since 2.0.0
-   */
-  @Experimental
-  def readStream: DataStreamReader = new DataStreamReader(self)
 
 
   // scalastyle:off
@@ -802,7 +779,7 @@ object SparkSession {
       if ((session ne null) && !session.sparkContext.isStopped) {
         options.foreach { case (k, v) => session.conf.set(k, v) }
         if (options.nonEmpty) {
-          logWarning("Using an existing SparkSession; some configuration may not take effect.")
+          logWarning("Use an existing SparkSession, some configuration may not take effect.")
         }
         return session
       }
@@ -814,7 +791,7 @@ object SparkSession {
         if ((session ne null) && !session.sparkContext.isStopped) {
           options.foreach { case (k, v) => session.conf.set(k, v) }
           if (options.nonEmpty) {
-            logWarning("Using an existing SparkSession; some configuration may not take effect.")
+            logWarning("Use an existing SparkSession, some configuration may not take effect.")
           }
           return session
         }
@@ -822,19 +799,16 @@ object SparkSession {
         // No active nor global default session. Create a new one.
         val sparkContext = userSuppliedContext.getOrElse {
           // set app name if not given
-          val randomAppName = java.util.UUID.randomUUID().toString
+          if (!options.contains("spark.app.name")) {
+            options += "spark.app.name" -> java.util.UUID.randomUUID().toString
+          }
+
           val sparkConf = new SparkConf()
           options.foreach { case (k, v) => sparkConf.set(k, v) }
-          if (!sparkConf.contains("spark.app.name")) {
-            sparkConf.setAppName(randomAppName)
-          }
           val sc = SparkContext.getOrCreate(sparkConf)
           // maybe this is an existing SparkContext, update its SparkConf which maybe used
           // by SparkSession
           options.foreach { case (k, v) => sc.conf.set(k, v) }
-          if (!sc.conf.contains("spark.app.name")) {
-            sc.conf.setAppName(randomAppName)
-          }
           sc
         }
         session = new SparkSession(sparkContext)

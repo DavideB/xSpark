@@ -79,7 +79,7 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
            |)
          """.stripMargin)
 
-      withTempView("expectedJsonTable") {
+      withTempTable("expectedJsonTable") {
         read.json(jsonFilePath).createOrReplaceTempView("expectedJsonTable")
         checkAnswer(
           sql("SELECT a, b, `c_!@(3)`, `<d>`.`d!`, `<d>`.`=` FROM jsonTable"),
@@ -109,7 +109,7 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
 
       assert(expectedSchema === table("jsonTable").schema)
 
-      withTempView("expectedJsonTable") {
+      withTempTable("expectedJsonTable") {
         read.json(jsonFilePath).createOrReplaceTempView("expectedJsonTable")
         checkAnswer(
           sql("SELECT b, `<d>`.`=` FROM jsonTable"),
@@ -247,7 +247,7 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
            |)
          """.stripMargin)
 
-      withTempView("expectedJsonTable") {
+      withTempTable("expectedJsonTable") {
         read.json(jsonFilePath).createOrReplaceTempView("expectedJsonTable")
 
         checkAnswer(
@@ -255,13 +255,13 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
           sql("SELECT `c_!@(3)` FROM expectedJsonTable").collect().toSeq)
 
         // Discard the cached relation.
-        sessionState.refreshTable("jsonTable")
+        sessionState.invalidateTable("jsonTable")
 
         checkAnswer(
           sql("SELECT * FROM jsonTable"),
           sql("SELECT `c_!@(3)` FROM expectedJsonTable").collect().toSeq)
 
-        sessionState.refreshTable("jsonTable")
+        sessionState.invalidateTable("jsonTable")
         val expectedSchema = StructType(StructField("c_!@(3)", IntegerType, true) :: Nil)
 
         assert(expectedSchema === table("jsonTable").schema)
@@ -333,7 +333,7 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
         }.getMessage
 
         assert(
-          message.contains("Table default.ctasJsonTable already exists."),
+          message.contains("Table ctasJsonTable already exists."),
           "We should complain that ctasJsonTable already exists")
 
         // The following statement should be fine if it has IF NOT EXISTS.
@@ -349,7 +349,7 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
            """.stripMargin)
 
         // Discard the cached relation.
-        sessionState.refreshTable("ctasJsonTable")
+        sessionState.invalidateTable("ctasJsonTable")
 
         // Schema should not be changed.
         assert(table("ctasJsonTable").schema === table("jsonTable").schema)
@@ -424,7 +424,7 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
         sql("SELECT * FROM savedJsonTable tmp where tmp.a > 5"),
         (6 to 10).map(i => Row(i, s"str$i")))
 
-      sessionState.refreshTable("savedJsonTable")
+      sessionState.invalidateTable("savedJsonTable")
 
       checkAnswer(
         sql("SELECT * FROM savedJsonTable where savedJsonTable.a < 5"),
@@ -553,7 +553,7 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
 
   test("scan a parquet table created through a CTAS statement") {
     withSQLConf(HiveUtils.CONVERT_METASTORE_PARQUET.key -> "true") {
-      withTempView("jt") {
+      withTempTable("jt") {
         (1 to 10).map(i => i -> s"str$i").toDF("a", "b").createOrReplaceTempView("jt")
 
         withTable("test_parquet_ctas") {
@@ -710,7 +710,7 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
             options = Map("path" -> tempDir.getCanonicalPath),
             isExternal = false)
 
-          sessionState.refreshTable("wide_schema")
+          sessionState.invalidateTable("wide_schema")
 
           val actualSchema = table("wide_schema").schema
           assert(schema === actualSchema)
@@ -743,12 +743,12 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
 
       sharedState.externalCatalog.createTable("default", hiveTable, ignoreIfExists = false)
 
-      sessionState.refreshTable(tableName)
+      sessionState.invalidateTable(tableName)
       val actualSchema = table(tableName).schema
       assert(schema === actualSchema)
 
       // Checks the DESCRIBE output.
-      checkAnswer(sql("DESCRIBE spark6655"), Row("int", "int", null) :: Nil)
+      checkAnswer(sql("DESCRIBE spark6655"), Row("int", "int", "") :: Nil)
     }
   }
 
@@ -758,7 +758,7 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
 
     withTable(tableName) {
       df.write.format("parquet").partitionBy("d", "b").saveAsTable(tableName)
-      sessionState.refreshTable(tableName)
+      sessionState.invalidateTable(tableName)
       val metastoreTable = sharedState.externalCatalog.getTable("default", tableName)
       val expectedPartitionColumns = StructType(df.schema("d") :: df.schema("b") :: Nil)
 
@@ -793,7 +793,7 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
         .bucketBy(8, "d", "b")
         .sortBy("c")
         .saveAsTable(tableName)
-      sessionState.refreshTable(tableName)
+      sessionState.invalidateTable(tableName)
       val metastoreTable = sharedState.externalCatalog.getTable("default", tableName)
       val expectedBucketByColumns = StructType(df.schema("d") :: df.schema("b") :: Nil)
       val expectedSortByColumns = StructType(df.schema("c") :: Nil)
@@ -901,8 +901,7 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
       val e = intercept[AnalysisException] {
         createDF(10, 19).write.mode(SaveMode.Append).format("orc").saveAsTable("appendOrcToParquet")
       }
-      assert(e.getMessage.contains(
-        "The file format of the existing table default.appendOrcToParquet " +
+      assert(e.getMessage.contains("The file format of the existing table `appendOrcToParquet` " +
         "is `org.apache.spark.sql.execution.datasources.parquet.ParquetFileFormat`. " +
         "It doesn't match the specified format `orc`"))
     }
@@ -913,8 +912,7 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
         createDF(10, 19).write.mode(SaveMode.Append).format("parquet")
           .saveAsTable("appendParquetToJson")
       }
-      assert(e.getMessage.contains(
-        "The file format of the existing table default.appendParquetToJson " +
+      assert(e.getMessage.contains("The file format of the existing table `appendParquetToJson` " +
         "is `org.apache.spark.sql.execution.datasources.json.JsonFileFormat`. " +
         "It doesn't match the specified format `parquet`"))
     }
@@ -925,8 +923,7 @@ class MetastoreDataSourcesSuite extends QueryTest with SQLTestUtils with TestHiv
         createDF(10, 19).write.mode(SaveMode.Append).format("text")
           .saveAsTable("appendTextToJson")
       }
-      assert(e.getMessage.contains(
-        "The file format of the existing table default.appendTextToJson is " +
+      assert(e.getMessage.contains("The file format of the existing table `appendTextToJson` is " +
         "`org.apache.spark.sql.execution.datasources.json.JsonFileFormat`. " +
         "It doesn't match the specified format `text`"))
     }

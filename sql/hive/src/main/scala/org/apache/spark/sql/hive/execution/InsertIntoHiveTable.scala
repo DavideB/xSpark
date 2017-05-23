@@ -33,7 +33,6 @@ import org.apache.hadoop.hive.ql.ErrorMsg
 import org.apache.hadoop.mapred.{FileOutputFormat, JobConf}
 
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.execution.{SparkPlan, UnaryExecNode}
@@ -147,7 +146,8 @@ case class InsertIntoHiveTable(
     val hadoopConf = sessionState.newHadoopConf()
     val tmpLocation = getExternalTmpPath(tableLocation, hadoopConf)
     val fileSinkConf = new FileSinkDesc(tmpLocation.toString, tableDesc, false)
-    val isCompressed = hadoopConf.get("hive.exec.compress.output", "false").toBoolean
+    val isCompressed =
+      sessionState.conf.getConfString("hive.exec.compress.output", "false").toBoolean
 
     if (isCompressed) {
       // Please note that isCompressed, "mapred.output.compress", "mapred.output.compression.codec",
@@ -181,20 +181,22 @@ case class InsertIntoHiveTable(
     // Validate partition spec if there exist any dynamic partitions
     if (numDynamicPartitions > 0) {
       // Report error if dynamic partitioning is not enabled
-      if (!hadoopConf.get("hive.exec.dynamic.partition", "true").toBoolean) {
+      if (!sessionState.conf.getConfString("hive.exec.dynamic.partition", "true").toBoolean) {
         throw new SparkException(ErrorMsg.DYNAMIC_PARTITION_DISABLED.getMsg)
       }
 
       // Report error if dynamic partition strict mode is on but no static partition is found
       if (numStaticPartitions == 0 &&
-        hadoopConf.get("hive.exec.dynamic.partition.mode", "strict").equalsIgnoreCase("strict")) {
+          sessionState.conf.getConfString(
+            "hive.exec.dynamic.partition.mode", "strict").equalsIgnoreCase("strict"))
+      {
         throw new SparkException(ErrorMsg.DYNAMIC_PARTITION_STRICT_MODE.getMsg)
       }
 
       // Report error if any static partition appears after a dynamic partition
       val isDynamic = partitionColumnNames.map(partitionSpec(_).isEmpty)
       if (isDynamic.init.zip(isDynamic.tail).contains((true, false))) {
-        throw new AnalysisException(ErrorMsg.PARTITION_DYN_STA_ORDER.getMsg)
+        throw new SparkException(ErrorMsg.PARTITION_DYN_STA_ORDER.getMsg)
       }
     }
 
@@ -295,7 +297,6 @@ case class InsertIntoHiveTable(
 
     // Invalidate the cache.
     sqlContext.sharedState.cacheManager.invalidateCache(table)
-    sqlContext.sessionState.catalog.refreshTable(table.catalogTable.identifier)
 
     // It would be nice to just return the childRdd unchanged so insert operations could be chained,
     // however for now we return an empty list to simplify compatibility checks with hive, which

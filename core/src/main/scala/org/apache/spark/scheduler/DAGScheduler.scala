@@ -17,19 +17,21 @@
 
 package org.apache.spark.scheduler
 
-import java.io.{FileInputStream, NotSerializableException}
+import java.io.NotSerializableException
 import java.util.Properties
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 import scala.annotation.tailrec
-import scala.collection.{Map, mutable}
+import scala.collection.Map
 import scala.collection.mutable.{HashMap, HashSet, Stack}
 import scala.concurrent.duration._
 import scala.language.existentials
 import scala.language.postfixOps
 import scala.util.control.NonFatal
+
 import org.apache.commons.lang3.SerializationUtils
+
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.executor.TaskMetrics
@@ -41,14 +43,6 @@ import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
 import org.apache.spark.util._
-import spray.json._
-import DefaultJsonProtocol._
-
-import scala.io
-import java.nio.file.{Files, Paths}
-
-import org.apache.spark.deploy.control.ControllerJob
-
 
 /**
  * The high-level scheduling layer that implements stage-oriented scheduling. It computes a DAG of
@@ -161,141 +155,6 @@ class DAGScheduler(
 
   private[scheduler] val activeJobs = new HashSet[ActiveJob]
 
-  val stageIdToWeight = new HashMap[Int, Int]
-
-  val jsonFile = sys.env.getOrElse("SPARK_HOME", ".") + "/conf/" +
-    sc.appName.replaceAll("[^a-zA-Z0-9.-]", "_") + ".json"
-
-  val appJson = if (Files.exists(Paths.get(jsonFile))) {
-    io.Source.fromFile(jsonFile).mkString.parseJson
-  } else null
-
-  def average[T](ts: Iterable[T])(implicit num: Numeric[T]): Double = {
-    num.toDouble(ts.sum) / ts.size
-  }
-
-  def checkDeadline(): Boolean = {
-    var feasibility = true
-    val deadline = sc.conf.get("spark.control.deadline").toInt
-    val alpha = sc.conf.get("spark.control.alpha").toDouble
-    val numTaskApp = sc.conf.get("spark.control.numtask").toLong
-    val inputRecordApp = sc.conf.getLong("spark.control.inputrecord", 0)
-    val appDeadline = System.currentTimeMillis() + (alpha * deadline).toLong
-    val controller: ControllerJob = new ControllerJob(sc.conf, appDeadline)
-
-    // APP STATE PROGRESS VAR
-    var currentTime = System.currentTimeMillis()
-    var totalDuration = appJson.asJsObject.fields("0").asJsObject.
-      fields("totalduration").convertTo[Double]
-    var stageJsonIds = appJson.asJsObject.fields.keys.toList.filter(id =>
-      appJson.asJsObject.fields(id).asJsObject.fields("nominalrate").convertTo[Double] != 0.0)
-
-    val inputRecordProfileApp = appJson.asJsObject.fields("0").asJsObject.
-      fields("inputrecord").convertTo[Long]
-
-    // MAX REQUESTED CORE FOR BETTER NUM MAX EXECUTOR
-    var maxRequestedCore = 0
-
-    // INPUT / OUTPUT Normalized by numtask
-    val inputMap: HashMap[String, Double] = new HashMap[String, Double]
-    val outputMap: HashMap[String, Double] = new HashMap[String, Double]
-
-
-    // FOR EACH STAGE CHECK CORE NEEDED AND UPDATE VALUES
-    appJson.asJsObject.fields.keys.toList.
-      sortWith((x, y) => x.toInt < y.toInt).foreach(id => {
-      // STAGE JSON
-      val stageJson = appJson.asJsObject.fields(id).asJsObject
-      logInfo("SID " + id + " " + stageJson.prettyPrint)
-      // IF GENSTAGE OUTPUT IS INPUTRECORD TO GENERATE
-      if (stageJson.fields("genstage").convertTo[Boolean]) {
-        outputMap(id) = inputRecordApp / numTaskApp
-        val duration = stageJson.fields("duration").convertTo[Double]
-        totalDuration -= duration
-
-      } else if (!stageJson.fields("skipped").convertTo[Boolean]) {
-        val numTaskProfile = stageJson.fields("numtask").convertTo[Long]
-        val recordsReadProfile = stageJson.fields("recordsread").convertTo[Long] +
-          stageJson.fields("shufflerecordsread").convertTo[Long]
-        val recordsWriteProfile = stageJson.fields("recordswrite").convertTo[Long] +
-          stageJson.fields("shufflerecordswrite").convertTo[Long]
-        val parentsIds = stageJson.fields("parentsIds").convertTo[List[Int]]
-
-        // FILTERING FACTOR
-        val beta = recordsWriteProfile.toDouble / recordsReadProfile.toDouble
-        logInfo("BETA " + beta.toString)
-        var inputRecordProfile = parentsIds.foldLeft(0L) {
-          (agg, x) => agg + appJson.asJsObject.fields(x.toString).asJsObject.fields("recordswrite").convertTo[Long] +
-            appJson.asJsObject.fields(x.toString).asJsObject.fields("shufflerecordswrite").convertTo[Long]
-        }
-        if (inputRecordProfile == 0L) {
-          inputRecordProfile = parentsIds.foldLeft(0L) {
-            (agg, x) => agg + appJson.asJsObject.fields(x.toString).asJsObject.fields("recordsread").convertTo[Long] +
-              appJson.asJsObject.fields(x.toString).asJsObject.fields("shufflerecordsread").convertTo[Long]
-          }
-        }
-        if (inputRecordProfile == 0) inputRecordProfile = inputRecordProfileApp
-        logInfo("INPUT RECORD PROFILE: " + inputRecordProfile.toString)
-        val gamma = inputRecordProfile / recordsReadProfile.toDouble
-        logInfo("GAMMA " + gamma.toString)
-        var inputRecord = parentsIds.foldLeft(0.0) {
-          (agg, x) => agg + outputMap(x.toString)
-        }
-        if (inputRecord == 0.0) {
-          inputRecord = parentsIds.foldLeft(0.0) {
-            (agg, x) => agg + inputMap(x.toString)
-          }
-        }
-        if (inputRecord == 0.0) inputRecord = inputRecordApp / numTaskApp
-        logInfo("INPUT RECORD: " + inputRecord.toString)
-        controller.NOMINAL_RATE_RECORD_S = stageJson.fields("nominalrate").convertTo[Double]
-
-        // COMPUTE DEADLINE
-        val duration = stageJson.fields("duration").convertTo[Double]
-        val weight = (totalDuration / duration) - 1
-        val deadlineStage = controller.computeDeadlineStage(weight, currentTime, alpha, deadline)
-
-        // UPDATE RECORD AND APP STATE
-        if (recordsReadProfile == numTaskApp) {
-          inputMap(id) = numTaskApp
-        } else {
-          inputMap(id) = inputRecord / gamma
-        }
-        if (recordsWriteProfile == 0L) {
-          outputMap(id) = 0
-        } else {
-          outputMap(id) = (inputRecord / gamma) * beta
-        }
-        logInfo(inputMap.toString())
-        logInfo(outputMap.toString())
-        currentTime += deadlineStage
-        totalDuration -= duration
-        stageJsonIds = stageJsonIds.filter(x => x != id)
-
-        if (inputRecord == (inputRecordApp / numTaskApp)) {
-          inputRecord = (inputRecord / gamma) * numTaskApp
-        } else {
-          inputRecord = inputRecord * numTaskApp
-        }
-        // COMPUTE CORE AND CHECK FEASIBILITY
-        val coreStage = controller.computeCoreStage(deadlineStage, inputRecord.toLong)
-        maxRequestedCore = math.max(coreStage, maxRequestedCore)
-        val coreForExecutor = controller.computeCoreForExecutors(coreStage, false)
-        if (coreForExecutor == IndexedSeq(-1)) {
-          controller.numMaxExecutor = math.ceil(coreStage.toDouble /
-            controller.coreForVM.toDouble).toInt
-          feasibility = false
-        }
-      }
-    })
-    // SUGGEST MAX EXECUTOR
-    if (maxRequestedCore < (0.8 * controller.coreForVM * controller.numMaxExecutor)) {
-      logInfo("TOTAL CORE >> CORE NEEDED: REDUCE MAX EXECUTOR TO " +
-        math.ceil(maxRequestedCore / controller.coreForVM))
-    }
-    feasibility
-  }
-
   /**
    * Contains the locations that each RDD's partitions are cached on.  This map's keys are RDD ids
    * and its values are arrays indexed by partition numbers. Each array value is the set of
@@ -327,13 +186,6 @@ class DAGScheduler(
 
   private[scheduler] val eventProcessLoop = new DAGSchedulerEventProcessLoop(this)
   taskScheduler.setDAGScheduler(this)
-
-  if (appJson != null && sc.conf.getBoolean("spark.control.checkdeadline", false)) {
-    logInfo("LOADED JSON FOR APP: " + jsonFile)
-    if (!checkDeadline()) {
-      stop()
-    }
-  }
 
   /**
    * Called by the TaskSetManager to report task's starting.
@@ -381,8 +233,8 @@ class DAGScheduler(
   /**
    * Called by TaskScheduler implementation when an executor fails.
    */
-  def executorLost(execId: String, reason: ExecutorLossReason): Unit = {
-    eventProcessLoop.post(ExecutorLost(execId, reason))
+  def executorLost(execId: String): Unit = {
+    eventProcessLoop.post(ExecutorLost(execId))
   }
 
   /**
@@ -519,15 +371,6 @@ class DAGScheduler(
       mapOutputTracker.registerShuffle(shuffleDep.shuffleId, rdd.partitions.length)
     }
     stage
-  }
-
-  private def setWeight(node: Stage): Unit = {
-    node.parents.foreach { parent =>
-      val w1 = stageIdToWeight.getOrElse(node.id, 0) + 1
-      val w2 = stageIdToWeight.getOrElse(parent.id, 0)
-      stageIdToWeight(parent.id) = math.max(w1, w2)
-      this.setWeight(parent)
-      }
   }
 
   /**
@@ -1004,10 +847,6 @@ class DAGScheduler(
       // New stage creation may throw an exception if, for example, jobs are run on a
       // HadoopRDD whose underlying HDFS files have been deleted.
       finalStage = newResultStage(finalRDD, func, partitions, jobId, callSite)
-      stageIdToWeight.clear()
-      stageIdToWeight(finalStage.id) = 0
-      setWeight(finalStage)
-      logInfo(s"MapStageIdToWeight of JobID $jobId \n $stageIdToWeight")
     } catch {
       case e: Exception =>
         logWarning("Creating new stage failed due to exception - job: " + jobId, e)
@@ -1212,40 +1051,13 @@ class DAGScheduler(
         return
     }
 
-    if (tasks.nonEmpty) {
+    if (tasks.size > 0) {
       logInfo("Submitting " + tasks.size + " missing tasks from " + stage + " (" + stage.rdd + ")")
       stage.pendingPartitions ++= tasks.map(_.partitionId)
       logDebug("New pending partitions: " + stage.pendingPartitions)
       taskScheduler.submitTasks(new TaskSet(
         tasks.toArray, stage.id, stage.latestInfo.attemptId, jobId, properties))
       stage.latestInfo.submissionTime = Some(clock.getTimeMillis())
-      if (appJson != null) {
-        val stageJson = appJson.asJsObject.fields(stage.id.toString)
-        val totalduration = appJson.asJsObject.fields("0").asJsObject.fields("totalduration").convertTo[Long]
-        val duration = stageJson.asJsObject.fields("duration").convertTo[Long]
-        val weight = stageJson.asJsObject.fields("weight").convertTo[Long]
-        val stageJsonIds = appJson.asJsObject.fields.keys.toList.filter(id =>
-          appJson.asJsObject.fields(id).asJsObject.fields("nominalrate").convertTo[Double] != 0.0)
-        listenerBus.post(SparkStageWeightSubmitted(stage.latestInfo, properties,
-          weight,
-          duration,
-          totalduration,
-          stageJson.asJsObject.fields("parentsIds").convertTo[List[Int]],
-          stageJson.asJsObject.fields("nominalrate").convertTo[Double],
-          stageJson.asJsObject.fields("genstage").convertTo[Boolean],
-          stageJsonIds))
-      }
-      else {
-        logError("NO JSON FOR APP: " + jsonFile)
-        listenerBus.post(SparkStageWeightSubmitted(stage.latestInfo, properties,
-          1,
-          1,
-          1000,
-          List(),
-          0.0,
-          true,
-          List()))
-      }
     } else {
       // Because we posted SparkListenerStageSubmitted earlier, we should mark
       // the stage as completed here in case there are no tasks to run
@@ -1465,20 +1277,18 @@ class DAGScheduler(
               s"has failed the maximum allowable number of " +
               s"times: ${Stage.MAX_CONSECUTIVE_FETCH_FAILURES}. " +
               s"Most recent failure reason: ${failureMessage}", None)
-          } else {
-            if (failedStages.isEmpty) {
-              // Don't schedule an event to resubmit failed stages if failed isn't empty, because
-              // in that case the event will already have been scheduled.
-              // TODO: Cancel running tasks in the stage
-              logInfo(s"Resubmitting $mapStage (${mapStage.name}) and " +
-                s"$failedStage (${failedStage.name}) due to fetch failure")
-              messageScheduler.schedule(new Runnable {
-                override def run(): Unit = eventProcessLoop.post(ResubmitFailedStages)
-              }, DAGScheduler.RESUBMIT_TIMEOUT, TimeUnit.MILLISECONDS)
-            }
-            failedStages += failedStage
-            failedStages += mapStage
+          } else if (failedStages.isEmpty) {
+            // Don't schedule an event to resubmit failed stages if failed isn't empty, because
+            // in that case the event will already have been scheduled.
+            // TODO: Cancel running tasks in the stage
+            logInfo(s"Resubmitting $mapStage (${mapStage.name}) and " +
+              s"$failedStage (${failedStage.name}) due to fetch failure")
+            messageScheduler.schedule(new Runnable {
+              override def run(): Unit = eventProcessLoop.post(ResubmitFailedStages)
+            }, DAGScheduler.RESUBMIT_TIMEOUT, TimeUnit.MILLISECONDS)
           }
+          failedStages += failedStage
+          failedStages += mapStage
           // Mark the map whose fetch failed as broken in the map stage
           if (mapId != -1) {
             mapStage.removeOutputLoc(mapId, bmAddress)
@@ -1487,7 +1297,7 @@ class DAGScheduler(
 
           // TODO: mark the executor as failed only if there were lots of fetch failures on it
           if (bmAddress != null) {
-            handleExecutorLost(bmAddress.executorId, filesLost = true, Some(task.epoch))
+            handleExecutorLost(bmAddress.executorId, fetchFailed = true, Some(task.epoch))
           }
         }
 
@@ -1513,16 +1323,15 @@ class DAGScheduler(
    * modify the scheduler's internal state. Use executorLost() to post a loss event from outside.
    *
    * We will also assume that we've lost all shuffle blocks associated with the executor if the
-   * executor serves its own blocks (i.e., we're not using external shuffle), the entire slave
-   * is lost (likely including the shuffle service), or a FetchFailed occurred, in which case we
-   * presume all shuffle data related to this executor to be lost.
+   * executor serves its own blocks (i.e., we're not using external shuffle) OR a FetchFailed
+   * occurred, in which case we presume all shuffle data related to this executor to be lost.
    *
    * Optionally the epoch during which the failure was caught can be passed to avoid allowing
    * stray fetch failures from possibly retriggering the detection of a node as lost.
    */
   private[scheduler] def handleExecutorLost(
       execId: String,
-      filesLost: Boolean,
+      fetchFailed: Boolean,
       maybeEpoch: Option[Long] = None) {
     val currentEpoch = maybeEpoch.getOrElse(mapOutputTracker.getEpoch)
     if (!failedEpoch.contains(execId) || failedEpoch(execId) < currentEpoch) {
@@ -1530,8 +1339,7 @@ class DAGScheduler(
       logInfo("Executor lost: %s (epoch %d)".format(execId, currentEpoch))
       blockManagerMaster.removeExecutor(execId)
 
-      if (filesLost || !env.blockManager.externalShuffleServiceEnabled) {
-        logInfo("Shuffle files lost for executor: %s (epoch %d)".format(execId, currentEpoch))
+      if (!env.blockManager.externalShuffleServiceEnabled || fetchFailed) {
         // TODO: This will be really slow if we keep accumulating shuffle map stages
         for ((shuffleId, stage) <- shuffleToMapStage) {
           stage.removeOutputsOnExecutor(execId)
@@ -1835,12 +1643,8 @@ private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler
     case ExecutorAdded(execId, host) =>
       dagScheduler.handleExecutorAdded(execId, host)
 
-    case ExecutorLost(execId, reason) =>
-      val filesLost = reason match {
-        case SlaveLost(_, true) => true
-        case _ => false
-      }
-      dagScheduler.handleExecutorLost(execId, filesLost)
+    case ExecutorLost(execId) =>
+      dagScheduler.handleExecutorLost(execId, fetchFailed = false)
 
     case BeginEvent(task, taskInfo) =>
       dagScheduler.handleBeginEvent(task, taskInfo)

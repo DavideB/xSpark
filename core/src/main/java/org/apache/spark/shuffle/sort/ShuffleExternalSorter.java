@@ -72,10 +72,7 @@ final class ShuffleExternalSorter extends MemoryConsumer {
   private final TaskContext taskContext;
   private final ShuffleWriteMetrics writeMetrics;
 
-  /**
-   * Force this sorter to spill when there are this many elements in memory. The default value is
-   * 1024 * 1024 * 1024, which allows the maximum size of the pointer array to be 8G.
-   */
+  /** Force this sorter to spill when there are this many elements in memory. For testing only */
   private final long numElementsForSpillThreshold;
 
   /** The buffer size to use when writing spills using DiskBlockObjectWriter */
@@ -117,7 +114,7 @@ final class ShuffleExternalSorter extends MemoryConsumer {
     // Use getSizeAsKb (not bytes) to maintain backwards compatibility if no units are provided
     this.fileBufferSizeBytes = (int) conf.getSizeAsKb("spark.shuffle.file.buffer", "32k") * 1024;
     this.numElementsForSpillThreshold =
-      conf.getLong("spark.shuffle.spill.numElementsForceSpillThreshold", 1024 * 1024 * 1024);
+      conf.getLong("spark.shuffle.spill.numElementsForceSpillThreshold", Long.MAX_VALUE);
     this.writeMetrics = writeMetrics;
     this.inMemSorter = new ShuffleInMemorySorter(
       this, initialSize, conf.getBoolean("spark.shuffle.sort.useRadixSort", true));
@@ -375,9 +372,7 @@ final class ShuffleExternalSorter extends MemoryConsumer {
 
     // for tests
     assert(inMemSorter != null);
-    if (inMemSorter.numRecords() >= numElementsForSpillThreshold) {
-      logger.info("Spilling data because number of spilledRecords crossed the threshold " +
-        numElementsForSpillThreshold);
+    if (inMemSorter.numRecords() > numElementsForSpillThreshold) {
       spill();
     }
 

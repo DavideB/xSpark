@@ -124,14 +124,14 @@ class FileStreamSinkSuite extends StreamTest {
     val outputDir = Utils.createTempDir(namePrefix = "stream.output").getCanonicalPath
     val checkpointDir = Utils.createTempDir(namePrefix = "stream.checkpoint").getCanonicalPath
 
-    var query: StreamingQuery = null
+    var query: ContinuousQuery = null
 
     try {
       query =
-        df.writeStream
-          .option("checkpointLocation", checkpointDir)
+        df.write
           .format("parquet")
-          .start(outputDir)
+          .option("checkpointLocation", checkpointDir)
+          .startStream(outputDir)
 
       inputData.addData(1, 2, 3)
 
@@ -156,17 +156,17 @@ class FileStreamSinkSuite extends StreamTest {
     val outputDir = Utils.createTempDir(namePrefix = "stream.output").getCanonicalPath
     val checkpointDir = Utils.createTempDir(namePrefix = "stream.checkpoint").getCanonicalPath
 
-    var query: StreamingQuery = null
+    var query: ContinuousQuery = null
 
     try {
       query =
         ds.map(i => (i, i * 1000))
           .toDF("id", "value")
-          .writeStream
+          .write
+          .format("parquet")
           .partitionBy("id")
           .option("checkpointLocation", checkpointDir)
-          .format("parquet")
-          .start(outputDir)
+          .startStream(outputDir)
 
       inputData.addData(1, 2, 3)
       failAfter(streamingTimeout) {
@@ -240,19 +240,19 @@ class FileStreamSinkSuite extends StreamTest {
       val outputDir = Utils.createTempDir(namePrefix = "stream.output").getCanonicalPath
       val checkpointDir = Utils.createTempDir(namePrefix = "stream.checkpoint").getCanonicalPath
 
-      var query: StreamingQuery = null
+      var query: ContinuousQuery = null
 
       try {
         val writer =
           ds.map(i => (i, i * 1000))
             .toDF("id", "value")
-            .writeStream
+            .write
         if (format.nonEmpty) {
           writer.format(format.get)
         }
         query = writer
             .option("checkpointLocation", checkpointDir)
-            .start(outputDir)
+            .startStream(outputDir)
       } finally {
         if (query != null) {
           query.stop()

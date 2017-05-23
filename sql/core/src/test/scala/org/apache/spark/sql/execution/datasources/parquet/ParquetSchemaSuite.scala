@@ -54,7 +54,7 @@ abstract class ParquetSchemaTest extends ParquetTest with SharedSQLContext {
       binaryAsString: Boolean,
       int96AsTimestamp: Boolean,
       writeLegacyParquetFormat: Boolean): Unit = {
-    val converter = new ParquetSchemaConverter(
+    val converter = new CatalystSchemaConverter(
       assumeBinaryIsString = binaryAsString,
       assumeInt96IsTimestamp = int96AsTimestamp,
       writeLegacyParquetFormat = writeLegacyParquetFormat)
@@ -78,7 +78,7 @@ abstract class ParquetSchemaTest extends ParquetTest with SharedSQLContext {
       binaryAsString: Boolean,
       int96AsTimestamp: Boolean,
       writeLegacyParquetFormat: Boolean): Unit = {
-    val converter = new ParquetSchemaConverter(
+    val converter = new CatalystSchemaConverter(
       assumeBinaryIsString = binaryAsString,
       assumeInt96IsTimestamp = int96AsTimestamp,
       writeLegacyParquetFormat = writeLegacyParquetFormat)
@@ -1054,7 +1054,7 @@ class ParquetSchemaSuite extends ParquetSchemaTest {
       expectedSchema: String): Unit = {
     test(s"Clipping - $testName") {
       val expected = MessageTypeParser.parseMessageType(expectedSchema)
-      val actual = ParquetReadSupport.clipParquetSchema(
+      val actual = CatalystReadSupport.clipParquetSchema(
         MessageTypeParser.parseMessageType(parquetSchema), catalystSchema)
 
       try {

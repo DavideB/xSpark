@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.execution.datasources.jdbc
 
-import java.sql.{Connection, Driver, DriverManager, PreparedStatement, SQLException}
+import java.sql.{Connection, Driver, DriverManager, PreparedStatement}
 import java.util.Properties
 
 import scala.collection.JavaConverters._
@@ -33,10 +33,6 @@ import org.apache.spark.sql.types._
  * Util functions for JDBC tables.
  */
 object JdbcUtils extends Logging {
-
-  // the property names are case sensitive
-  val JDBC_BATCH_FETCH_SIZE = "fetchsize"
-  val JDBC_BATCH_INSERT_SIZE = "batchsize"
 
   /**
    * Returns a factory for creating connections to the given JDBC URL.
@@ -54,7 +50,7 @@ object JdbcUtils extends Logging {
       DriverManager.getDriver(url).getClass.getCanonicalName
     }
     () => {
-      DriverRegistry.register(driverClass)
+      userSpecifiedDriverClass.foreach(DriverRegistry.register)
       val driver: Driver = DriverManager.getDrivers.asScala.collectFirst {
         case d: DriverWrapper if d.wrapped.getClass.getCanonicalName == driverClass => d
         case d if d.getClass.getCanonicalName == driverClass => d
@@ -100,9 +96,8 @@ object JdbcUtils extends Logging {
   /**
    * Returns a PreparedStatement that inserts a row into table via conn.
    */
-  def insertStatement(conn: Connection, table: String, rddSchema: StructType, dialect: JdbcDialect)
-      : PreparedStatement = {
-    val columns = rddSchema.fields.map(x => dialect.quoteIdentifier(x.name)).mkString(",")
+  def insertStatement(conn: Connection, table: String, rddSchema: StructType): PreparedStatement = {
+    val columns = rddSchema.fields.map(_.name).mkString(",")
     val placeholders = rddSchema.fields.map(_ => "?").mkString(",")
     val sql = s"INSERT INTO $table ($columns) VALUES ($placeholders)"
     conn.prepareStatement(sql)
@@ -159,10 +154,6 @@ object JdbcUtils extends Logging {
       nullTypes: Array[Int],
       batchSize: Int,
       dialect: JdbcDialect): Iterator[Byte] = {
-    require(batchSize >= 1,
-      s"Invalid value `${batchSize.toString}` for parameter " +
-      s"`${JdbcUtils.JDBC_BATCH_INSERT_SIZE}`. The minimum value is 1.")
-
     val conn = getConnection()
     var committed = false
     val supportsTransactions = try {
@@ -178,7 +169,7 @@ object JdbcUtils extends Logging {
       if (supportsTransactions) {
         conn.setAutoCommit(false) // Everything in the same db transaction.
       }
-      val stmt = insertStatement(conn, table, rddSchema, dialect)
+      val stmt = insertStatement(conn, table, rddSchema)
       try {
         var rowCount = 0
         while (iterator.hasNext) {
@@ -233,17 +224,6 @@ object JdbcUtils extends Logging {
         conn.commit()
       }
       committed = true
-    } catch {
-      case e: SQLException =>
-        val cause = e.getNextException
-        if (cause != null && e.getCause != cause) {
-          if (e.getCause == null) {
-            e.initCause(cause)
-          } else {
-            e.addSuppressed(cause)
-          }
-        }
-        throw e
     } finally {
       if (!committed) {
         // The stage must fail.  We got here through an exception path, so
@@ -272,7 +252,7 @@ object JdbcUtils extends Logging {
     val sb = new StringBuilder()
     val dialect = JdbcDialects.get(url)
     df.schema.fields foreach { field =>
-      val name = dialect.quoteIdentifier(field.name)
+      val name = field.name
       val typ: String = getJdbcType(field.dataType, dialect).databaseTypeDefinition
       val nullable = if (field.nullable) "" else "NOT NULL"
       sb.append(s", $name $typ $nullable")
@@ -295,7 +275,7 @@ object JdbcUtils extends Logging {
 
     val rddSchema = df.schema
     val getConnection: () => Connection = createConnectionFactory(url, properties)
-    val batchSize = properties.getProperty(JDBC_BATCH_INSERT_SIZE, "1000").toInt
+    val batchSize = properties.getProperty("batchsize", "1000").toInt
     df.foreachPartition { iterator =>
       savePartition(getConnection, table, iterator, rddSchema, nullTypes, batchSize, dialect)
     }

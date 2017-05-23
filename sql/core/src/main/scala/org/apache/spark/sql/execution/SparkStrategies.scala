@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.execution
 
+import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{AnalysisException, Strategy}
 import org.apache.spark.sql.catalyst.InternalRow
@@ -32,9 +33,9 @@ import org.apache.spark.sql.execution.command._
 import org.apache.spark.sql.execution.datasources._
 import org.apache.spark.sql.execution.exchange.ShuffleExchange
 import org.apache.spark.sql.execution.joins.{BuildLeft, BuildRight}
-import org.apache.spark.sql.execution.streaming.{MemoryPlan, StreamingExecutionRelation, StreamingRelation, StreamingRelationExec}
+import org.apache.spark.sql.execution.streaming.MemoryPlan
 import org.apache.spark.sql.internal.SQLConf
-import org.apache.spark.sql.streaming.StreamingQuery
+import org.apache.spark.sql.streaming.ContinuousQuery
 
 /**
  * Converts a logical plan into zero or more SparkPlans.  This API is exposed for experimenting
@@ -42,12 +43,13 @@ import org.apache.spark.sql.streaming.StreamingQuery
  * writing libraries should instead consider using the stable APIs provided in
  * [[org.apache.spark.sql.sources]]
  */
+@DeveloperApi
 abstract class SparkStrategy extends GenericStrategy[SparkPlan] {
 
   override protected def planLater(plan: LogicalPlan): SparkPlan = PlanLater(plan)
 }
 
-case class PlanLater(plan: LogicalPlan) extends LeafExecNode {
+private[sql] case class PlanLater(plan: LogicalPlan) extends LeafExecNode {
 
   override def output: Seq[Attribute] = plan.output
 
@@ -56,7 +58,7 @@ case class PlanLater(plan: LogicalPlan) extends LeafExecNode {
   }
 }
 
-abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
+private[sql] abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
   self: SparkPlanner =>
 
   /**
@@ -66,22 +68,22 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
     override def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
       case logical.ReturnAnswer(rootPlan) => rootPlan match {
         case logical.Limit(IntegerLiteral(limit), logical.Sort(order, true, child)) =>
-          execution.TakeOrderedAndProjectExec(limit, order, child.output, planLater(child)) :: Nil
+          execution.TakeOrderedAndProjectExec(limit, order, None, planLater(child)) :: Nil
         case logical.Limit(
             IntegerLiteral(limit),
             logical.Project(projectList, logical.Sort(order, true, child))) =>
           execution.TakeOrderedAndProjectExec(
-            limit, order, projectList, planLater(child)) :: Nil
+            limit, order, Some(projectList), planLater(child)) :: Nil
         case logical.Limit(IntegerLiteral(limit), child) =>
           execution.CollectLimitExec(limit, planLater(child)) :: Nil
         case other => planLater(other) :: Nil
       }
       case logical.Limit(IntegerLiteral(limit), logical.Sort(order, true, child)) =>
-        execution.TakeOrderedAndProjectExec(limit, order, child.output, planLater(child)) :: Nil
+        execution.TakeOrderedAndProjectExec(limit, order, None, planLater(child)) :: Nil
       case logical.Limit(
           IntegerLiteral(limit), logical.Project(projectList, logical.Sort(order, true, child))) =>
         execution.TakeOrderedAndProjectExec(
-          limit, order, projectList, planLater(child)) :: Nil
+          limit, order, Some(projectList), planLater(child)) :: Nil
       case _ => Nil
     }
   }
@@ -223,7 +225,7 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
 
   /**
    * Used to plan aggregation queries that are computed incrementally as part of a
-   * [[StreamingQuery]]. Currently this rule is injected into the planner
+   * [[ContinuousQuery]]. Currently this rule is injected into the planner
    * on-demand, only when planning in a [[org.apache.spark.sql.execution.streaming.StreamExecution]]
    */
   object StatefulAggregationStrategy extends Strategy {
@@ -305,22 +307,6 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
     }
   }
 
-  /**
-   * This strategy is just for explaining `Dataset/DataFrame` created by `spark.readStream`.
-   * It won't affect the execution, because `StreamingRelation` will be replaced with
-   * `StreamingExecutionRelation` in `StreamingQueryManager` and `StreamingExecutionRelation` will
-   * be replaced with the real relation using the `Source` in `StreamExecution`.
-   */
-  object StreamingRelationStrategy extends Strategy {
-    def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
-      case s: StreamingRelation =>
-        StreamingRelationExec(s.sourceName, s.output) :: Nil
-      case s: StreamingExecutionRelation =>
-        StreamingRelationExec(s.toString, s.output) :: Nil
-      case _ => Nil
-    }
-  }
-
   // Can we automate these 'pass through' operations?
   object BasicOperators extends Strategy {
     def numPartitions: Int = self.numPartitions
@@ -351,9 +337,6 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
       case logical.MapPartitionsInR(f, p, b, is, os, objAttr, child) =>
         execution.MapPartitionsExec(
           execution.r.MapPartitionsRWrapper(f, p, b, is, os), objAttr, planLater(child)) :: Nil
-      case logical.FlatMapGroupsInR(f, p, b, is, os, key, value, grouping, data, objAttr, child) =>
-        execution.FlatMapGroupsInRExec(f, p, b, is, os, key, value, grouping,
-          data, objAttr, planLater(child)) :: Nil
       case logical.MapElements(f, objAttr, child) =>
         execution.MapElementsExec(f, objAttr, planLater(child)) :: Nil
       case logical.AppendColumns(f, in, out, child) =>
@@ -449,7 +432,7 @@ abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
             c.bucketSpec,
             c.mode,
             c.options,
-            c.query)
+            c.child)
         ExecutedCommandExec(cmd) :: Nil
 
       case c: CreateTempViewUsing =>

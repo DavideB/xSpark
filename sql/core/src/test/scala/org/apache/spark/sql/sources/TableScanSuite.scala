@@ -137,7 +137,7 @@ class TableScanSuite extends DataSourceTest with SharedSQLContext {
     super.beforeAll()
     sql(
       """
-        |CREATE TEMPORARY VIEW oneToTen
+        |CREATE TEMPORARY TABLE oneToTen
         |USING org.apache.spark.sql.sources.SimpleScanSource
         |OPTIONS (
         |  From '1',
@@ -149,7 +149,7 @@ class TableScanSuite extends DataSourceTest with SharedSQLContext {
 
     sql(
       """
-        |CREATE TEMPORARY VIEW tableWithSchema (
+        |CREATE TEMPORARY TABLE tableWithSchema (
         |`string$%Field` stRIng,
         |binaryField binary,
         |`booleanField` boolean,
@@ -332,7 +332,7 @@ class TableScanSuite extends DataSourceTest with SharedSQLContext {
   test("defaultSource") {
     sql(
       """
-        |CREATE TEMPORARY VIEW oneToTenDef
+        |CREATE TEMPORARY TABLE oneToTenDef
         |USING org.apache.spark.sql.sources
         |OPTIONS (
         |  from '1',
@@ -351,7 +351,7 @@ class TableScanSuite extends DataSourceTest with SharedSQLContext {
     val schemaNotAllowed = intercept[Exception] {
       sql(
         """
-          |CREATE TEMPORARY VIEW relationProvierWithSchema (i int)
+          |CREATE TEMPORARY TABLE relationProvierWithSchema (i int)
           |USING org.apache.spark.sql.sources.SimpleScanSource
           |OPTIONS (
           |  From '1',
@@ -364,7 +364,7 @@ class TableScanSuite extends DataSourceTest with SharedSQLContext {
     val schemaNeeded = intercept[Exception] {
       sql(
         """
-          |CREATE TEMPORARY VIEW schemaRelationProvierWithoutSchema
+          |CREATE TEMPORARY TABLE schemaRelationProvierWithoutSchema
           |USING org.apache.spark.sql.sources.AllDataTypesScanSource
           |OPTIONS (
           |  From '1',
@@ -378,7 +378,7 @@ class TableScanSuite extends DataSourceTest with SharedSQLContext {
   test("SPARK-5196 schema field with comment") {
     sql(
       """
-       |CREATE TEMPORARY VIEW student(name string comment "SN", age int comment "SA", grade int)
+       |CREATE TEMPORARY TABLE student(name string comment "SN", age int comment "SA", grade int)
        |USING org.apache.spark.sql.sources.AllDataTypesScanSource
        |OPTIONS (
        |  from '1',

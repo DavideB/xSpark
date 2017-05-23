@@ -50,37 +50,6 @@ case class UnresolvedRelation(
 }
 
 /**
- * An inline table that has not been resolved yet. Once resolved, it is turned by the analyzer into
- * a [[org.apache.spark.sql.catalyst.plans.logical.LocalRelation]].
- *
- * @param names list of column names
- * @param rows expressions for the data
- */
-case class UnresolvedInlineTable(
-    names: Seq[String],
-    rows: Seq[Seq[Expression]])
-  extends LeafNode {
-
-  lazy val expressionsResolved: Boolean = rows.forall(_.forall(_.resolved))
-  override lazy val resolved = false
-  override def output: Seq[Attribute] = Nil
-}
-
-/**
- * A table-valued function, e.g.
- * {{{
- *   select * from range(10);
- * }}}
- */
-case class UnresolvedTableValuedFunction(functionName: String, functionArgs: Seq[Expression])
-  extends LeafNode {
-
-  override def output: Seq[Attribute] = Nil
-
-  override lazy val resolved = false
-}
-
-/**
  * Holds the name of an attribute that has yet to be resolved.
  */
 case class UnresolvedAttribute(nameParts: Seq[String]) extends Attribute with Unevaluable {
@@ -246,20 +215,23 @@ abstract class Star extends LeafExpression with NamedExpression {
 case class UnresolvedStar(target: Option[Seq[String]]) extends Star with Unevaluable {
 
   override def expand(input: LogicalPlan, resolver: Resolver): Seq[NamedExpression] = {
-    // If there is no table specified, use all input attributes.
-    if (target.isEmpty) return input.output
 
-    val expandedAttributes =
-      if (target.get.size == 1) {
-        // If there is a table, pick out attributes that are part of this table.
-        input.output.filter(_.qualifier.exists(resolver(_, target.get.head)))
+    // First try to expand assuming it is table.*.
+    val expandedAttributes: Seq[Attribute] = target match {
+      // If there is no table specified, use all input attributes.
+      case None => input.output
+      // If there is a table, pick out attributes that are part of this table.
+      case Some(t) => if (t.size == 1) {
+        input.output.filter(_.qualifier.exists(resolver(_, t.head)))
       } else {
         List()
       }
+    }
     if (expandedAttributes.nonEmpty) return expandedAttributes
 
     // Try to resolve it as a struct expansion. If there is a conflict and both are possible,
     // (i.e. [name].* is both a table and a struct), the struct path can always be qualified.
+    require(target.isDefined)
     val attribute = input.resolve(target.get, resolver)
     if (attribute.isDefined) {
       // This target resolved to an attribute in child. It must be a struct. Expand it.

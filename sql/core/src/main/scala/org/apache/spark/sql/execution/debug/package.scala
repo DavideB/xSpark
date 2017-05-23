@@ -17,10 +17,9 @@
 
 package org.apache.spark.sql.execution
 
-import java.util.Collections
+import scala.collection.mutable.HashSet
 
-import scala.collection.JavaConverters._
-
+import org.apache.spark.{Accumulator, AccumulatorParam}
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
@@ -29,7 +28,7 @@ import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodeFormatter, CodegenContext, ExprCode}
 import org.apache.spark.sql.catalyst.trees.TreeNodeRef
 import org.apache.spark.sql.internal.SQLConf
-import org.apache.spark.util.{AccumulatorV2, LongAccumulator}
+import org.apache.spark.util.LongAccumulator
 
 /**
  * Contains methods for debugging query execution.
@@ -70,6 +69,15 @@ package object debug {
   }
 
   /**
+   * Augments [[SparkSession]] with debug methods.
+   */
+  implicit class DebugSQLContext(sparkSession: SparkSession) {
+    def debug(): Unit = {
+      sparkSession.conf.set(SQLConf.DATAFRAME_EAGER_ANALYSIS.key, false)
+    }
+  }
+
+  /**
    * Augments [[Dataset]]s with debug methods.
    */
   implicit class DebugQuery(query: Dataset[_]) extends Logging {
@@ -97,32 +105,29 @@ package object debug {
     }
   }
 
-  case class DebugExec(child: SparkPlan) extends UnaryExecNode with CodegenSupport {
+  private[sql] case class DebugExec(child: SparkPlan) extends UnaryExecNode with CodegenSupport {
     def output: Seq[Attribute] = child.output
 
-    class SetAccumulator[T] extends AccumulatorV2[T, java.util.Set[T]] {
-      private val _set = Collections.synchronizedSet(new java.util.HashSet[T]())
-      override def isZero: Boolean = _set.isEmpty
-      override def copy(): AccumulatorV2[T, java.util.Set[T]] = {
-        val newAcc = new SetAccumulator[T]()
-        newAcc._set.addAll(_set)
-        newAcc
+    implicit object SetAccumulatorParam extends AccumulatorParam[HashSet[String]] {
+      def zero(initialValue: HashSet[String]): HashSet[String] = {
+        initialValue.clear()
+        initialValue
       }
-      override def reset(): Unit = _set.clear()
-      override def add(v: T): Unit = _set.add(v)
-      override def merge(other: AccumulatorV2[T, java.util.Set[T]]): Unit = {
-        _set.addAll(other.value)
+
+      def addInPlace(v1: HashSet[String], v2: HashSet[String]): HashSet[String] = {
+        v1 ++= v2
+        v1
       }
-      override def value: java.util.Set[T] = _set
     }
 
     /**
      * A collection of metrics for each column of output.
+     *
+     * @param elementTypes the actual runtime types for the output. Useful when there are bugs
+     *                     causing the wrong data to be projected.
      */
-    case class ColumnMetrics() {
-      val elementTypes = new SetAccumulator[String]
-      sparkContext.register(elementTypes)
-    }
+    case class ColumnMetrics(
+      elementTypes: Accumulator[HashSet[String]] = sparkContext.accumulator(HashSet.empty))
 
     val tupleCount: LongAccumulator = sparkContext.longAccumulator
 
@@ -133,9 +138,7 @@ package object debug {
       debugPrint(s"== ${child.simpleString} ==")
       debugPrint(s"Tuples output: ${tupleCount.value}")
       child.output.zip(columnStats).foreach { case (attr, metric) =>
-        // This is called on driver. All accumulator updates have a fixed value. So it's safe to use
-        // `asScala` which accesses the internal values using `java.util.Iterator`.
-        val actualDataTypes = metric.elementTypes.value.asScala.mkString("{", ",", "}")
+        val actualDataTypes = metric.elementTypes.value.mkString("{", ",", "}")
         debugPrint(s" ${attr.name} ${attr.dataType}: $actualDataTypes")
       }
     }
@@ -152,7 +155,7 @@ package object debug {
             while (i < numColumns) {
               val value = currentRow.get(i, output(i).dataType)
               if (value != null) {
-                columnStats(i).elementTypes.add(value.getClass.getName)
+                columnStats(i).elementTypes += HashSet(value.getClass.getName)
               }
               i += 1
             }

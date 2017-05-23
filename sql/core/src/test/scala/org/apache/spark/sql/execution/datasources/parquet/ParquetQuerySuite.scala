@@ -574,7 +574,7 @@ class ParquetQuerySuite extends QueryTest with ParquetTest with SharedSQLContext
   test("expand UDT in StructType") {
     val schema = new StructType().add("n", new NestedStructUDT, nullable = true)
     val expected = new StructType().add("n", new NestedStructUDT().sqlType, nullable = true)
-    assert(ParquetReadSupport.expandUDT(schema) === expected)
+    assert(CatalystReadSupport.expandUDT(schema) === expected)
   }
 
   test("expand UDT in ArrayType") {
@@ -592,7 +592,7 @@ class ParquetQuerySuite extends QueryTest with ParquetTest with SharedSQLContext
         containsNull = false),
       nullable = true)
 
-    assert(ParquetReadSupport.expandUDT(schema) === expected)
+    assert(CatalystReadSupport.expandUDT(schema) === expected)
   }
 
   test("expand UDT in MapType") {
@@ -612,7 +612,7 @@ class ParquetQuerySuite extends QueryTest with ParquetTest with SharedSQLContext
         valueContainsNull = false),
       nullable = true)
 
-    assert(ParquetReadSupport.expandUDT(schema) === expected)
+    assert(CatalystReadSupport.expandUDT(schema) === expected)
   }
 
   test("returning batch for wide table") {
@@ -665,30 +665,6 @@ class ParquetQuerySuite extends QueryTest with ParquetTest with SharedSQLContext
 
       readParquetFile(path) { df =>
         assert(df.schema.last.metadata.getString("key") == "value")
-      }
-    }
-  }
-
-  test("SPARK-16632: read Parquet int32 as ByteType and ShortType") {
-    withSQLConf(SQLConf.PARQUET_VECTORIZED_READER_ENABLED.key -> "true") {
-      withTempPath { dir =>
-        val path = dir.getCanonicalPath
-
-        // When being written to Parquet, `TINYINT` and `SMALLINT` should be converted into
-        // `int32 (INT_8)` and `int32 (INT_16)` respectively. However, Hive doesn't add the `INT_8`
-        // and `INT_16` annotation properly (HIVE-14294). Thus, when reading files written by Hive
-        // using Spark with the vectorized Parquet reader enabled, we may hit error due to type
-        // mismatch.
-        //
-        // Here we are simulating Hive's behavior by writing a single `INT` field and then read it
-        // back as `TINYINT` and `SMALLINT` in Spark to verify this issue.
-        Seq(1).toDF("f").write.parquet(path)
-
-        val withByteField = new StructType().add("f", ByteType)
-        checkAnswer(spark.read.schema(withByteField).parquet(path), Row(1: Byte))
-
-        val withShortField = new StructType().add("f", ShortType)
-        checkAnswer(spark.read.schema(withShortField).parquet(path), Row(1: Short))
       }
     }
   }

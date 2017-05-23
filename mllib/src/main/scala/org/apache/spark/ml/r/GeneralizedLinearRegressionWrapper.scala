@@ -67,8 +67,8 @@ private[r] object GeneralizedLinearRegressionWrapper
       data: DataFrame,
       family: String,
       link: String,
-      tol: Double,
-      maxIter: Int): GeneralizedLinearRegressionWrapper = {
+      epsilon: Double,
+      maxit: Int): GeneralizedLinearRegressionWrapper = {
     val rFormula = new RFormula()
       .setFormula(formula)
     val rFormulaModel = rFormula.fit(data)
@@ -82,8 +82,8 @@ private[r] object GeneralizedLinearRegressionWrapper
       .setFamily(family)
       .setLink(link)
       .setFitIntercept(rFormula.hasIntercept)
-      .setTol(tol)
-      .setMaxIter(maxIter)
+      .setTol(epsilon)
+      .setMaxIter(maxit)
     val pipeline = new Pipeline()
       .setStages(Array(rFormulaModel, glr))
       .fit(data)

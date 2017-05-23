@@ -978,7 +978,6 @@ object functions {
    * @group normal_funcs
    * @since 1.4.0
    */
-  @deprecated("Use monotonically_increasing_id()", "2.0.0")
   def monotonicallyIncreasingId(): Column = monotonically_increasing_id()
 
   /**
@@ -2175,8 +2174,7 @@ object functions {
   def ltrim(e: Column): Column = withExpr {StringTrimLeft(e.expr) }
 
   /**
-   * Extract a specific group matched by a Java regex, from the specified string column.
-   * If the regex did not match, or the specified group did not match, an empty string is returned.
+   * Extract a specific(idx) group identified by a java regex, from the specified string column.
    *
    * @group string_funcs
    * @since 1.5.0
@@ -2589,22 +2587,19 @@ object functions {
    *   09:00:25-09:01:25 ...
    * }}}
    *
-   * For a streaming query, you may use the function `current_timestamp` to generate windows on
+   * For a continuous query, you may use the function `current_timestamp` to generate windows on
    * processing time.
    *
    * @param timeColumn The column or the expression to use as the timestamp for windowing by time.
    *                   The time column must be of TimestampType.
    * @param windowDuration A string specifying the width of the window, e.g. `10 minutes`,
    *                       `1 second`. Check [[org.apache.spark.unsafe.types.CalendarInterval]] for
-   *                       valid duration identifiers. Note that the duration is a fixed length of
-   *                       time, and does not vary over time according to a calendar. For example,
-   *                       `1 day` always means 86,400,000 milliseconds, not a calendar day.
+   *                       valid duration identifiers.
    * @param slideDuration A string specifying the sliding interval of the window, e.g. `1 minute`.
    *                      A new window will be generated every `slideDuration`. Must be less than
    *                      or equal to the `windowDuration`. Check
    *                      [[org.apache.spark.unsafe.types.CalendarInterval]] for valid duration
-   *                      identifiers. This duration is likewise absolute, and does not vary
-    *                     according to a calendar.
+   *                      identifiers.
    * @param startTime The offset with respect to 1970-01-01 00:00:00 UTC with which to start
    *                  window intervals. For example, in order to have hourly tumbling windows that
    *                  start 15 minutes past the hour, e.g. 12:15-13:15, 13:15-14:15... provide
@@ -2646,22 +2641,18 @@ object functions {
    *   09:00:20-09:01:20 ...
    * }}}
    *
-   * For a streaming query, you may use the function `current_timestamp` to generate windows on
+   * For a continuous query, you may use the function `current_timestamp` to generate windows on
    * processing time.
    *
    * @param timeColumn The column or the expression to use as the timestamp for windowing by time.
    *                   The time column must be of TimestampType.
    * @param windowDuration A string specifying the width of the window, e.g. `10 minutes`,
    *                       `1 second`. Check [[org.apache.spark.unsafe.types.CalendarInterval]] for
-   *                       valid duration identifiers. Note that the duration is a fixed length of
-   *                       time, and does not vary over time according to a calendar. For example,
-   *                       `1 day` always means 86,400,000 milliseconds, not a calendar day.
+   *                       valid duration identifiers.
    * @param slideDuration A string specifying the sliding interval of the window, e.g. `1 minute`.
    *                      A new window will be generated every `slideDuration`. Must be less than
    *                      or equal to the `windowDuration`. Check
-   *                      [[org.apache.spark.unsafe.types.CalendarInterval]] for valid duration
-   *                      identifiers. This duration is likewise absolute, and does not vary
-   *                     according to a calendar.
+   *                      [[org.apache.spark.unsafe.types.CalendarInterval]] for valid duration.
    *
    * @group datetime_funcs
    * @since 2.0.0
@@ -2692,7 +2683,7 @@ object functions {
    *   09:02:00-09:03:00 ...
    * }}}
    *
-   * For a streaming query, you may use the function `current_timestamp` to generate windows on
+   * For a continuous query, you may use the function `current_timestamp` to generate windows on
    * processing time.
    *
    * @param timeColumn The column or the expression to use as the timestamp for windowing by time.
@@ -2729,14 +2720,6 @@ object functions {
    * @since 1.3.0
    */
   def explode(e: Column): Column = withExpr { Explode(e.expr) }
-
-  /**
-   * Creates a new row for each element with position in the given array or map column.
-   *
-   * @group collection_funcs
-   * @since 2.1.0
-   */
-  def posexplode(e: Column): Column = withExpr { PosExplode(e.expr) }
 
   /**
    * Extracts json object from a json string based on json path specified, and returns json string

@@ -20,7 +20,6 @@ package org.apache.spark.ui.exec
 import java.net.URLEncoder
 import javax.servlet.http.HttpServletRequest
 
-import scala.util.Try
 import scala.xml.Node
 
 import org.apache.spark.status.api.v1.ExecutorSummary
@@ -54,9 +53,6 @@ private[ui] class ExecutorsPage(
   // When GCTimePercent is edited change ToolTips.TASK_TIME to match
   private val GCTimePercent = 0.1
 
-  // a safe String to Int for sorting ids (converts non-numeric Strings to -1)
-  private def idStrToInt(str: String) : Int = Try(str.toInt).getOrElse(-1)
-
   def render(request: HttpServletRequest): Seq[Node] = {
     val (activeExecutorInfo, deadExecutorInfo) = listener.synchronized {
       // The follow codes should be protected by `listener` to make sure no executors will be
@@ -73,14 +69,13 @@ private[ui] class ExecutorsPage(
     }
 
     val execInfo = activeExecutorInfo ++ deadExecutorInfo
-    implicit val idOrder = Ordering[Int].on((s: String) => idStrToInt(s)).reverse
     val execInfoSorted = execInfo.sortBy(_.id)
     val logsExist = execInfo.filter(_.executorLogs.nonEmpty).nonEmpty
 
     val execTable = {
       <table class={UIUtils.TABLE_CLASS_STRIPED_SORTABLE}>
         <thead>
-          <th class="sorttable_numeric">Executor ID</th>
+          <th>Executor ID</th>
           <th>Address</th>
           <th>Status</th>
           <th>RDD Blocks</th>
@@ -141,7 +136,7 @@ private[ui] class ExecutorsPage(
       }
 
     <tr>
-      <td sorttable_customkey={idStrToInt(info.id).toString}>{info.id}</td>
+      <td>{info.id}</td>
       <td>{info.hostPort}</td>
       <td sorttable_customkey={executorStatus.toString}>
         {executorStatus}

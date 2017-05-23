@@ -62,12 +62,12 @@ private[hive] class HiveSessionState(sparkSession: SparkSession)
   override lazy val analyzer: Analyzer = {
     new Analyzer(catalog, conf) {
       override val extendedResolutionRules =
-        AnalyzeCreateTableAsSelect(sparkSession) ::
         catalog.ParquetConversions ::
         catalog.OrcConversions ::
         catalog.CreateTables ::
-        PreprocessTableInsertion(conf) ::
-        DataSourceAnalysis(conf) ::
+        catalog.PreInsertionCasts ::
+        PreInsertCastAndRename ::
+        DataSourceAnalysis ::
         (if (conf.runSQLonFile) new ResolveDataSource(sparkSession) :: Nil else Nil)
 
       override val extendedCheckRules = Seq(PreWriteCheck(conf, catalog))

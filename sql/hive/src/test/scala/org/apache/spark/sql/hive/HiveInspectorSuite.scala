@@ -75,7 +75,6 @@ class HiveInspectorSuite extends SparkFunSuite with HiveInspectors {
 
   val data =
     Literal(true) ::
-    Literal(null) ::
     Literal(0.asInstanceOf[Byte]) ::
     Literal(0.asInstanceOf[Short]) ::
     Literal(0) ::

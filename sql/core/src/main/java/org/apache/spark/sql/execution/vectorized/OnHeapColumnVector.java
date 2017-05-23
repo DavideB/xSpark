@@ -392,9 +392,13 @@ public final class OnHeapColumnVector extends ColumnVector {
     return result;
   }
 
-  // Spilt this function out since it is the slow path.
   @Override
-  protected void reserveInternal(int newCapacity) {
+  public void reserve(int requiredCapacity) {
+    if (requiredCapacity > capacity) reserveInternal(requiredCapacity * 2);
+  }
+
+  // Spilt this function out since it is the slow path.
+  private void reserveInternal(int newCapacity) {
     if (this.resultArray != null || DecimalType.isByteArrayDecimalType(type)) {
       int[] newLengths = new int[newCapacity];
       int[] newOffsets = new int[newCapacity];

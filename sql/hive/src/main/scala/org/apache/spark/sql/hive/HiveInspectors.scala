@@ -424,9 +424,6 @@ private[hive] trait HiveInspectors {
           null
         }
 
-    case _: VoidObjectInspector =>
-      (_: Any) => null // always be null for void object inspector
-
     case soi: StandardStructObjectInspector =>
       val schema = dataType.asInstanceOf[StructType]
       val wrappers = soi.getAllStructFieldRefs.asScala.zip(schema.fields).map {
@@ -560,8 +557,7 @@ private[hive] trait HiveInspectors {
       // 1. create the pojo (most likely) object
       val result = x.create()
       var i = 0
-      val size = fieldRefs.size
-      while (i < size) {
+      while (i < fieldRefs.size) {
         // 2. set the property for the pojo
         val tpe = structType(i).dataType
         x.setStructFieldData(
@@ -578,8 +574,7 @@ private[hive] trait HiveInspectors {
       val row = a.asInstanceOf[InternalRow]
       val result = new java.util.ArrayList[AnyRef](fieldRefs.size)
       var i = 0
-      val size = fieldRefs.size
-      while (i < size) {
+      while (i < fieldRefs.size) {
         val tpe = structType(i).dataType
         result.add(wrap(row.get(i, tpe), fieldRefs.get(i).getFieldObjectInspector, tpe))
         i += 1
@@ -615,8 +610,7 @@ private[hive] trait HiveInspectors {
       cache: Array[AnyRef],
       dataTypes: Array[DataType]): Array[AnyRef] = {
     var i = 0
-    val length = inspectors.length
-    while (i < length) {
+    while (i < inspectors.length) {
       cache(i) = wrap(row.get(i, dataTypes(i)), inspectors(i), dataTypes(i))
       i += 1
     }
@@ -629,8 +623,7 @@ private[hive] trait HiveInspectors {
       cache: Array[AnyRef],
       dataTypes: Array[DataType]): Array[AnyRef] = {
     var i = 0
-    val length = inspectors.length
-    while (i < length) {
+    while (i < inspectors.length) {
       cache(i) = wrap(row(i), inspectors(i), dataTypes(i))
       i += 1
     }

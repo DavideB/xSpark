@@ -26,6 +26,7 @@ import org.apache.hadoop.io.compress.{CompressionCodecFactory, SplittableCompres
 import org.apache.hadoop.mapred.{FileInputFormat, JobConf}
 import org.apache.hadoop.mapreduce.{Job, TaskAttemptContext}
 
+import org.apache.spark.SparkContext
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql._
@@ -76,7 +77,7 @@ abstract class OutputWriterFactory extends Serializable {
    * through the [[OutputWriterFactory]] implementation.
    * @since 2.0.0
    */
-  def newWriter(path: String): OutputWriter = {
+  private[sql] def newWriter(path: String): OutputWriter = {
     throw new UnsupportedOperationException("newInstance with just path not supported")
   }
 }
@@ -134,13 +135,13 @@ abstract class OutputWriter {
  * @param options Configuration used when reading / writing data.
  */
 case class HadoopFsRelation(
+    sparkSession: SparkSession,
     location: FileCatalog,
     partitionSchema: StructType,
     dataSchema: StructType,
     bucketSpec: Option[BucketSpec],
     fileFormat: FileFormat,
-    options: Map[String, String])(val sparkSession: SparkSession)
-  extends BaseRelation with FileRelation {
+    options: Map[String, String]) extends BaseRelation with FileRelation {
 
   override def sqlContext: SQLContext = sparkSession.sqlContext
 
@@ -184,6 +185,15 @@ trait FileFormat {
       sparkSession: SparkSession,
       options: Map[String, String],
       files: Seq[FileStatus]): Option[StructType]
+
+  /**
+   * Prepares a read job and returns a potentially updated data source option [[Map]]. This method
+   * can be useful for collecting necessary global information for scanning input data.
+   */
+  def prepareRead(
+      sparkSession: SparkSession,
+      options: Map[String, String],
+      files: Seq[FileStatus]): Map[String, String] = options
 
   /**
    * Prepares a write job and returns an [[OutputWriterFactory]].  Client side job preparation can
@@ -249,7 +259,7 @@ trait FileFormat {
    * appends partition values to [[InternalRow]]s produced by the reader function [[buildReader]]
    * returns.
    */
-  def buildReaderWithPartitionValues(
+  private[sql] def buildReaderWithPartitionValues(
       sparkSession: SparkSession,
       dataSchema: StructType,
       partitionSchema: StructType,
@@ -356,14 +366,14 @@ trait FileCatalog {
 /**
  * Helper methods for gathering metadata from HDFS.
  */
-object HadoopFsRelation extends Logging {
+private[sql] object HadoopFsRelation extends Logging {
 
   /** Checks if we should filter out this path name. */
   def shouldFilterOut(pathName: String): Boolean = {
     // We filter everything that starts with _ and ., except _common_metadata and _metadata
     // because Parquet needs to find those metadata files from leaf files returned by this method.
     // We should refactor this logic to not mix metadata files with data files.
-    ((pathName.startsWith("_") && !pathName.contains("=")) || pathName.startsWith(".")) &&
+    (pathName.startsWith("_") || pathName.startsWith(".")) &&
       !pathName.startsWith("_common_metadata") && !pathName.startsWith("_metadata")
   }
 
@@ -388,17 +398,16 @@ object HadoopFsRelation extends Logging {
   // tasks/jobs may leave partial/corrupted data files there.  Files and directories whose name
   // start with "." are also ignored.
   def listLeafFiles(fs: FileSystem, status: FileStatus, filter: PathFilter): Array[FileStatus] = {
-    logTrace(s"Listing ${status.getPath}")
+    logInfo(s"Listing ${status.getPath}")
     val name = status.getPath.getName.toLowerCase
     if (shouldFilterOut(name)) {
-      Array.empty[FileStatus]
+      Array.empty
     } else {
       val statuses = {
         val (dirs, files) = fs.listStatus(status.getPath).partition(_.isDirectory)
         val stats = files ++ dirs.flatMap(dir => listLeafFiles(fs, dir, filter))
         if (filter != null) stats.filter(f => filter.accept(f.getPath)) else stats
       }
-      // statuses do not have any dirs.
       statuses.filterNot(status => shouldFilterOut(status.getPath.getName)).map {
         case f: LocatedFileStatus => f
 
@@ -439,12 +448,12 @@ object HadoopFsRelation extends Logging {
   def listLeafFilesInParallel(
       paths: Seq[Path],
       hadoopConf: Configuration,
-      sparkSession: SparkSession,
-      ignoreFileNotFound: Boolean): mutable.LinkedHashSet[FileStatus] = {
+      sparkSession: SparkSession): mutable.LinkedHashSet[FileStatus] = {
     assert(paths.size >= sparkSession.sessionState.conf.parallelPartitionDiscoveryThreshold)
     logInfo(s"Listing leaf files and directories in parallel under: ${paths.mkString(", ")}")
 
     val sparkContext = sparkSession.sparkContext
+    val sqlConf = sparkSession.sessionState.conf
     val serializableConfiguration = new SerializableConfiguration(hadoopConf)
     val serializedPaths = paths.map(_.toString)
 
@@ -461,11 +470,7 @@ object HadoopFsRelation extends Logging {
       val pathFilter = FileInputFormat.getInputPathFilter(jobConf)
       paths.map(new Path(_)).flatMap { path =>
         val fs = path.getFileSystem(serializableConfiguration.value)
-        try {
-          listLeafFiles(fs, fs.getFileStatus(path), pathFilter)
-        } catch {
-          case e: java.io.FileNotFoundException if ignoreFileNotFound => Array.empty[FileStatus]
-        }
+        Try(listLeafFiles(fs, fs.getFileStatus(path), pathFilter)).getOrElse(Array.empty)
       }
     }.map { status =>
       val blockLocations = status match {

@@ -43,13 +43,6 @@ case class SparkListenerStageSubmitted(stageInfo: StageInfo, properties: Propert
   extends SparkListenerEvent
 
 @DeveloperApi
-case class SparkStageWeightSubmitted
-(stageInfo: StageInfo, properties: Properties = null, weight: Long, duration: Long,
- totalduration: Long, parentsIds: List[Int],
- nominalrate: Double, genstage: Boolean, stageIds: List[String])
-  extends SparkListenerEvent
-
-@DeveloperApi
 case class SparkListenerStageCompleted(stageInfo: StageInfo) extends SparkListenerEvent
 
 @DeveloperApi
@@ -106,10 +99,6 @@ case class SparkListenerUnpersistRDD(rddId: Int) extends SparkListenerEvent
 
 @DeveloperApi
 case class SparkListenerExecutorAdded(time: Long, executorId: String, executorInfo: ExecutorInfo)
-  extends SparkListenerEvent
-
-@DeveloperApi
-case class SparkListenerExecutorAssigned(executorId: String, stageId: Int)
   extends SparkListenerEvent
 
 @DeveloperApi
@@ -253,12 +242,6 @@ private[spark] trait SparkListenerInterface {
    * Called when the driver receives a block update info.
    */
   def onBlockUpdated(blockUpdated: SparkListenerBlockUpdated): Unit
-
-  def onExecutorAssigned
-  (sparkListenerExecutorAssigned: SparkListenerExecutorAssigned) { }
-
-  def onStageWeightSubmitted
-  (stageWeightSubmitted: SparkStageWeightSubmitted) { }
 
   /**
    * Called when other events like SQL-specific events are posted.

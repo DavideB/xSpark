@@ -19,7 +19,7 @@ package org.apache.spark.sql.execution.datasources
 
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.TableIdentifier
-import org.apache.spark.sql.catalyst.plans.QueryPlan
+import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.plans.logical
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.execution.command.RunnableCommand
@@ -41,10 +41,17 @@ case class CreateTableUsing(
     partitionColumns: Array[String],
     bucketSpec: Option[BucketSpec],
     allowExisting: Boolean,
-    managedIfNoPath: Boolean) extends logical.Command
+    managedIfNoPath: Boolean) extends LogicalPlan with logical.Command {
+
+  override def output: Seq[Attribute] = Seq.empty
+  override def children: Seq[LogicalPlan] = Seq.empty
+}
 
 /**
  * A node used to support CTAS statements and saveAsTable for the data source API.
+ * This node is a [[logical.UnaryNode]] instead of a [[logical.Command]] because we want the
+ * analyzer can analyze the logical plan that will be used to populate the table.
+ * So, [[PreWriteCheck]] can detect cases that are not allowed.
  */
 case class CreateTableUsingAsSelect(
     tableIdent: TableIdentifier,
@@ -53,10 +60,8 @@ case class CreateTableUsingAsSelect(
     bucketSpec: Option[BucketSpec],
     mode: SaveMode,
     options: Map[String, String],
-    query: LogicalPlan) extends logical.Command {
-
-  override def innerChildren: Seq[QueryPlan[_]] = Seq(query)
-  override lazy val resolved: Boolean = query.resolved
+    child: LogicalPlan) extends logical.UnaryNode {
+  override def output: Seq[Attribute] = Seq.empty[Attribute]
 }
 
 case class CreateTempViewUsing(

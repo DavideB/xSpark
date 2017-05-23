@@ -54,10 +54,8 @@ public final class UnsafeKVExternalSorter {
       StructType valueSchema,
       BlockManager blockManager,
       SerializerManager serializerManager,
-      long pageSizeBytes,
-      long numElementsForSpillThreshold) throws IOException {
-    this(keySchema, valueSchema, blockManager, serializerManager, pageSizeBytes,
-      numElementsForSpillThreshold, null);
+      long pageSizeBytes) throws IOException {
+    this(keySchema, valueSchema, blockManager, serializerManager, pageSizeBytes, null);
   }
 
   public UnsafeKVExternalSorter(
@@ -66,7 +64,6 @@ public final class UnsafeKVExternalSorter {
       BlockManager blockManager,
       SerializerManager serializerManager,
       long pageSizeBytes,
-      long numElementsForSpillThreshold,
       @Nullable BytesToBytesMap map) throws IOException {
     this.keySchema = keySchema;
     this.valueSchema = valueSchema;
@@ -91,7 +88,6 @@ public final class UnsafeKVExternalSorter {
         prefixComparator,
         /* initialSize */ 4096,
         pageSizeBytes,
-        numElementsForSpillThreshold,
         canUseRadixSort);
     } else {
       // The array will be used to do in-place sort, which require half of the space to be empty.
@@ -136,7 +132,6 @@ public final class UnsafeKVExternalSorter {
         prefixComparator,
         /* initialSize */ 4096,
         pageSizeBytes,
-        numElementsForSpillThreshold,
         inMemSorter);
 
       // reset the map, so we can re-use it to insert new records. the inMemSorter will not used

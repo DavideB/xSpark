@@ -434,9 +434,6 @@ class Word2Vec extends Serializable with Logging {
       bcSyn1Global.unpersist(false)
     }
     newSentences.unpersist()
-    expTable.destroy()
-    bcVocab.destroy()
-    bcVocabHash.destroy()
 
     val wordArray = vocab.map(_.word)
     new Word2VecModel(wordArray.zipWithIndex.toMap, syn0Global)
@@ -518,7 +515,7 @@ class Word2VecModel private[spark] (
   }
 
   /**
-   * Find synonyms of a word; do not include the word itself in results.
+   * Find synonyms of a word
    * @param word a word
    * @param num number of synonyms to find
    * @return array of (word, cosineSimilarity)
@@ -526,34 +523,17 @@ class Word2VecModel private[spark] (
   @Since("1.1.0")
   def findSynonyms(word: String, num: Int): Array[(String, Double)] = {
     val vector = transform(word)
-    findSynonyms(vector, num, Some(word))
+    findSynonyms(vector, num)
   }
 
   /**
-   * Find synonyms of the vector representation of a word, possibly
-   * including any words in the model vocabulary whose vector respresentation
-   * is the supplied vector.
+   * Find synonyms of the vector representation of a word
    * @param vector vector representation of a word
    * @param num number of synonyms to find
    * @return array of (word, cosineSimilarity)
    */
   @Since("1.1.0")
   def findSynonyms(vector: Vector, num: Int): Array[(String, Double)] = {
-    findSynonyms(vector, num, None)
-  }
-
-  /**
-   * Find synonyms of the vector representation of a word, rejecting
-   * words identical to the value of wordOpt, if one is supplied.
-   * @param vector vector representation of a word
-   * @param num number of synonyms to find
-   * @param wordOpt optionally, a word to reject from the results list
-   * @return array of (word, cosineSimilarity)
-   */
-  private def findSynonyms(
-      vector: Vector,
-      num: Int,
-      wordOpt: Option[String]): Array[(String, Double)] = {
     require(num > 0, "Number of similar words should > 0")
     // TODO: optimize top-k
     val fVector = vector.toArray.map(_.toFloat)
@@ -580,14 +560,12 @@ class Word2VecModel private[spark] (
       ind += 1
     }
 
-    val scored = wordList.zip(cosVec).toSeq.sortBy(-_._2)
-
-    val filtered = wordOpt match {
-      case Some(w) => scored.take(num + 1).filter(tup => w != tup._1)
-      case None => scored
-    }
-
-    filtered.take(num).toArray
+    wordList.zip(cosVec)
+      .toSeq
+      .sortBy(-_._2)
+      .take(num + 1)
+      .tail
+      .toArray
   }
 
   /**
@@ -651,16 +629,14 @@ object Word2VecModel extends Loader[Word2VecModel] {
         ("vectorSize" -> vectorSize) ~ ("numWords" -> numWords)))
       sc.parallelize(Seq(metadata), 1).saveAsTextFile(Loader.metadataPath(path))
 
-      // We want to partition the model in partitions smaller than
-      // spark.kryoserializer.buffer.max
-      val bufferSize = Utils.byteStringAsBytes(
-        spark.conf.get("spark.kryoserializer.buffer.max", "64m"))
+      // We want to partition the model in partitions of size 32MB
+      val partitionSize = (1L << 25)
       // We calculate the approximate size of the model
-      // We only calculate the array size, considering an
-      // average string size of 15 bytes, the formula is:
-      // (floatSize * vectorSize + 15) * numWords
-      val approxSize = (4L * vectorSize + 15) * numWords
-      val nPartitions = ((approxSize / bufferSize) + 1).toInt
+      // We only calculate the array size, not considering
+      // the string size, the formula is:
+      // floatSize * numWords * vectorSize
+      val approxSize = 4L * numWords * vectorSize
+      val nPartitions = ((approxSize / partitionSize) + 1).toInt
       val dataArray = model.toSeq.map { case (w, v) => Data(w, v) }
       spark.createDataFrame(dataArray).repartition(nPartitions).write.parquet(Loader.dataPath(path))
     }

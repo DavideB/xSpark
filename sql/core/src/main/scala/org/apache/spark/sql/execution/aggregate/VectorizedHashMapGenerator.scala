@@ -313,12 +313,10 @@ class VectorizedHashMapGenerator(
     def hashLong(l: String): String = s"long $result = $l;"
     def hashBytes(b: String): String = {
       val hash = ctx.freshName("hash")
-      val bytes = ctx.freshName("bytes")
       s"""
          |int $result = 0;
-         |byte[] $bytes = $b;
-         |for (int i = 0; i < $bytes.length; i++) {
-         |  ${genComputeHash(ctx, s"$bytes[i]", ByteType, hash)}
+         |for (int i = 0; i < $b.length; i++) {
+         |  ${genComputeHash(ctx, s"$b[i]", ByteType, hash)}
          |  $result = ($result ^ (0x9e3779b9)) + $hash + ($result << 6) + ($result >>> 2);
          |}
        """.stripMargin

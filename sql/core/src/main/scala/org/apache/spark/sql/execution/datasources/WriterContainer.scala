@@ -36,18 +36,17 @@ import org.apache.spark.sql.execution.command.CreateDataSourceTableUtils._
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
 import org.apache.spark.util.{SerializableConfiguration, Utils}
-import org.apache.spark.util.collection.unsafe.sort.UnsafeExternalSorter
 
 
 /** A container for all the details required when writing to a table. */
-private[datasources] case class WriteRelation(
+case class WriteRelation(
     sparkSession: SparkSession,
     dataSchema: StructType,
     path: String,
     prepareJobForWrite: Job => OutputWriterFactory,
     bucketSpec: Option[BucketSpec])
 
-private[datasources] abstract class BaseWriterContainer(
+private[sql] abstract class BaseWriterContainer(
     @transient val relation: WriteRelation,
     @transient private val job: Job,
     isAppend: Boolean)
@@ -234,7 +233,7 @@ private[datasources] abstract class BaseWriterContainer(
 /**
  * A writer that writes all of the rows in a partition to a single file.
  */
-private[datasources] class DefaultWriterContainer(
+private[sql] class DefaultWriterContainer(
     relation: WriteRelation,
     job: Job,
     isAppend: Boolean)
@@ -293,7 +292,7 @@ private[datasources] class DefaultWriterContainer(
  * done by maintaining a HashMap of open files until `maxFiles` is reached.  If this occurs, the
  * writer externally sorts the remaining rows and then writes out them out one file at a time.
  */
-private[datasources] class DynamicPartitionWriterContainer(
+private[sql] class DynamicPartitionWriterContainer(
     relation: WriteRelation,
     job: Job,
     partitionColumns: Seq[Attribute],
@@ -390,9 +389,7 @@ private[datasources] class DynamicPartitionWriterContainer(
       StructType.fromAttributes(dataColumns),
       SparkEnv.get.blockManager,
       SparkEnv.get.serializerManager,
-      TaskContext.get().taskMemoryManager().pageSizeBytes,
-      SparkEnv.get.conf.getLong("spark.shuffle.spill.numElementsForceSpillThreshold",
-        UnsafeExternalSorter.DEFAULT_NUM_ELEMENTS_FOR_SPILL_THRESHOLD))
+      TaskContext.get().taskMemoryManager().pageSizeBytes)
 
     while (iterator.hasNext) {
       val currentRow = iterator.next()

@@ -23,7 +23,7 @@ import scala.collection.Map
 import scala.collection.mutable.Stack
 import scala.reflect.ClassTag
 
-import org.apache.commons.lang3.ClassUtils
+import org.apache.commons.lang.ClassUtils
 import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
@@ -156,13 +156,6 @@ abstract class TreeNode[BaseType <: TreeNode[BaseType]] extends Product {
     val lifted = pf.lift
     foreach(node => lifted(node).foreach(ret.+=))
     ret
-  }
-
-  /**
-   * Returns a Seq containing the leaves in this tree.
-   */
-  def collectLeaves(): Seq[BaseType] = {
-    this.collect { case p if p.children.isEmpty => p }
   }
 
   /**
@@ -620,9 +613,7 @@ abstract class TreeNode[BaseType <: TreeNode[BaseType]] extends Product {
     case s: String => JString(s)
     case u: UUID => JString(u.toString)
     case dt: DataType => dt.jsonValue
-    // SPARK-17356: In usage of mllib, Metadata may store a huge vector of data, transforming
-    // it to JSON may trigger OutOfMemoryError.
-    case m: Metadata => Metadata.empty.jsonValue
+    case m: Metadata => m.jsonValue
     case s: StorageLevel =>
       ("useDisk" -> s.useDisk) ~ ("useMemory" -> s.useMemory) ~ ("useOffHeap" -> s.useOffHeap) ~
         ("deserialized" -> s.deserialized) ~ ("replication" -> s.replication)

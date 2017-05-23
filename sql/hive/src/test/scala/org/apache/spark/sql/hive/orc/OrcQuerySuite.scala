@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.hive.orc
 
+import java.io.File
 import java.nio.charset.StandardCharsets
 
 import org.scalatest.BeforeAndAfterAll
@@ -24,7 +25,7 @@ import org.scalatest.BeforeAndAfterAll
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.LogicalRelation
-import org.apache.spark.sql.hive.{HiveUtils, MetastoreRelation}
+import org.apache.spark.sql.hive.HiveUtils
 import org.apache.spark.sql.hive.test.TestHive._
 import org.apache.spark.sql.hive.test.TestHive.implicits._
 import org.apache.spark.sql.internal.SQLConf
@@ -92,7 +93,7 @@ class OrcQuerySuite extends QueryTest with BeforeAndAfterAll with OrcTest {
   test("Creating case class RDD table") {
     val data = (1 to 100).map(i => (i, s"val_$i"))
     sparkContext.parallelize(data).toDF().createOrReplaceTempView("t")
-    withTempView("t") {
+    withTempTable("t") {
       checkAnswer(sql("SELECT * FROM t"), data.toDF().collect())
     }
   }
@@ -157,29 +158,6 @@ class OrcQuerySuite extends QueryTest with BeforeAndAfterAll with OrcTest {
       checkAnswer(
         read.orc(file),
         Row(Seq.fill(5)(null): _*))
-    }
-  }
-
-  test("SPARK-16610: Respect orc.compress option when compression is unset") {
-    // Respect `orc.compress`.
-    withTempPath { file =>
-      spark.range(0, 10).write
-        .option("orc.compress", "ZLIB")
-        .orc(file.getCanonicalPath)
-      val expectedCompressionKind =
-        OrcFileOperator.getFileReader(file.getCanonicalPath).get.getCompression
-      assert("ZLIB" === expectedCompressionKind.name())
-    }
-
-    // `compression` overrides `orc.compress`.
-    withTempPath { file =>
-      spark.range(0, 10).write
-        .option("compression", "ZLIB")
-        .option("orc.compress", "SNAPPY")
-        .orc(file.getCanonicalPath)
-      val expectedCompressionKind =
-        OrcFileOperator.getFileReader(file.getCanonicalPath).get.getCompression
-      assert("ZLIB" === expectedCompressionKind.name())
     }
   }
 
@@ -332,7 +310,7 @@ class OrcQuerySuite extends QueryTest with BeforeAndAfterAll with OrcTest {
       val path = dir.getCanonicalPath
 
       withTable("empty_orc") {
-        withTempView("empty", "single") {
+        withTempTable("empty", "single") {
           spark.sql(
             s"""CREATE TABLE empty_orc(key INT, value STRING)
                |STORED AS ORC
@@ -423,48 +401,36 @@ class OrcQuerySuite extends QueryTest with BeforeAndAfterAll with OrcTest {
     }
   }
 
-  test("Verify the ORC conversion parameter: CONVERT_METASTORE_ORC") {
-    withTempView("single") {
-      val singleRowDF = Seq((0, "foo")).toDF("key", "value")
-      singleRowDF.createOrReplaceTempView("single")
+  test("SPARK-14070 Use ORC data source for SQL queries on ORC tables") {
+    withTempPath { dir =>
+      withSQLConf(SQLConf.ORC_FILTER_PUSHDOWN_ENABLED.key -> "true",
+        HiveUtils.CONVERT_METASTORE_ORC.key -> "true") {
+        val path = dir.getCanonicalPath
 
-      Seq("true", "false").foreach { orcConversion =>
-        withSQLConf(HiveUtils.CONVERT_METASTORE_ORC.key -> orcConversion) {
-          withTable("dummy_orc") {
-            withTempPath { dir =>
-              val path = dir.getCanonicalPath
-              spark.sql(
-                s"""
-                   |CREATE TABLE dummy_orc(key INT, value STRING)
-                   |STORED AS ORC
-                   |LOCATION '$path'
-                 """.stripMargin)
+        withTable("dummy_orc") {
+          withTempTable("single") {
+            spark.sql(
+              s"""CREATE TABLE dummy_orc(key INT, value STRING)
+                  |STORED AS ORC
+                  |LOCATION '$path'
+               """.stripMargin)
 
-              spark.sql(
-                s"""
-                   |INSERT INTO TABLE dummy_orc
-                   |SELECT key, value FROM single
-                 """.stripMargin)
+            val singleRowDF = Seq((0, "foo")).toDF("key", "value").coalesce(1)
+            singleRowDF.createOrReplaceTempView("single")
 
-              val df = spark.sql("SELECT * FROM dummy_orc WHERE key=0")
-              checkAnswer(df, singleRowDF)
+            spark.sql(
+              s"""INSERT INTO TABLE dummy_orc
+                  |SELECT key, value FROM single
+               """.stripMargin)
 
-              val queryExecution = df.queryExecution
-              if (orcConversion == "true") {
-                queryExecution.analyzed.collectFirst {
-                  case _: LogicalRelation => ()
-                }.getOrElse {
-                  fail(s"Expecting the query plan to convert orc to data sources, " +
-                    s"but got:\n$queryExecution")
-                }
-              } else {
-                queryExecution.analyzed.collectFirst {
-                  case _: MetastoreRelation => ()
-                }.getOrElse {
-                  fail(s"Expecting no conversion from orc to data sources, " +
-                    s"but got:\n$queryExecution")
-                }
-              }
+            val df = spark.sql("SELECT * FROM dummy_orc WHERE key=0")
+            checkAnswer(df, singleRowDF)
+
+            val queryExecution = df.queryExecution
+            queryExecution.analyzed.collectFirst {
+              case _: LogicalRelation => ()
+            }.getOrElse {
+              fail(s"Expecting the query plan to have LogicalRelation, but got:\n$queryExecution")
             }
           }
         }

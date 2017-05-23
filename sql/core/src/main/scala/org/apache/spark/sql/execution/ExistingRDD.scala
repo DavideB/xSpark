@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.execution
 
-import org.apache.commons.lang3.StringUtils
+import org.apache.commons.lang.StringUtils
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{AnalysisException, Row, SparkSession, SQLContext}
@@ -75,7 +75,7 @@ object RDDConversions {
 }
 
 /** Logical plan node for scanning data from an RDD. */
-case class LogicalRDD(
+private[sql] case class LogicalRDD(
     output: Seq[Attribute],
     rdd: RDD[InternalRow])(session: SparkSession)
   extends LogicalPlan with MultiInstanceRelation {
@@ -87,11 +87,9 @@ case class LogicalRDD(
   override def newInstance(): LogicalRDD.this.type =
     LogicalRDD(output.map(_.newInstance()), rdd)(session).asInstanceOf[this.type]
 
-  override def sameResult(plan: LogicalPlan): Boolean = {
-    plan.canonicalized match {
-      case LogicalRDD(_, otherRDD) => rdd.id == otherRDD.id
-      case _ => false
-    }
+  override def sameResult(plan: LogicalPlan): Boolean = plan match {
+    case LogicalRDD(_, otherRDD) => rdd.id == otherRDD.id
+    case _ => false
   }
 
   override protected def stringArgs: Iterator[Any] = Iterator(output)
@@ -106,12 +104,12 @@ case class LogicalRDD(
 }
 
 /** Physical plan node for scanning data from an RDD. */
-case class RDDScanExec(
+private[sql] case class RDDScanExec(
     output: Seq[Attribute],
     rdd: RDD[InternalRow],
     override val nodeName: String) extends LeafExecNode {
 
-  override lazy val metrics = Map(
+  private[sql] override lazy val metrics = Map(
     "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"))
 
   protected override def doExecute(): RDD[InternalRow] = {
@@ -130,7 +128,7 @@ case class RDDScanExec(
   }
 }
 
-trait DataSourceScanExec extends LeafExecNode {
+private[sql] trait DataSourceScanExec extends LeafExecNode {
   val rdd: RDD[InternalRow]
   val relation: BaseRelation
   val metastoreTableIdentifier: Option[TableIdentifier]
@@ -147,7 +145,7 @@ trait DataSourceScanExec extends LeafExecNode {
 }
 
 /** Physical plan node for scanning data from a relation. */
-case class RowDataSourceScanExec(
+private[sql] case class RowDataSourceScanExec(
     output: Seq[Attribute],
     rdd: RDD[InternalRow],
     @transient relation: BaseRelation,
@@ -156,7 +154,7 @@ case class RowDataSourceScanExec(
     override val metastoreTableIdentifier: Option[TableIdentifier])
   extends DataSourceScanExec with CodegenSupport {
 
-  override lazy val metrics =
+  private[sql] override lazy val metrics =
     Map("numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"))
 
   val outputUnsafeRows = relation match {
@@ -222,7 +220,7 @@ case class RowDataSourceScanExec(
 }
 
 /** Physical plan node for scanning data from a batched relation. */
-case class BatchedDataSourceScanExec(
+private[sql] case class BatchedDataSourceScanExec(
     output: Seq[Attribute],
     rdd: RDD[InternalRow],
     @transient relation: BaseRelation,
@@ -231,7 +229,7 @@ case class BatchedDataSourceScanExec(
     override val metastoreTableIdentifier: Option[TableIdentifier])
   extends DataSourceScanExec with CodegenSupport {
 
-  override lazy val metrics =
+  private[sql] override lazy val metrics =
     Map("numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"),
       "scanTime" -> SQLMetrics.createTimingMetric(sparkContext, "scan time"))
 
@@ -337,7 +335,7 @@ case class BatchedDataSourceScanExec(
   }
 }
 
-object DataSourceScanExec {
+private[sql] object DataSourceScanExec {
   // Metadata keys
   val INPUT_PATHS = "InputPaths"
   val PUSHED_FILTERS = "PushedFilters"

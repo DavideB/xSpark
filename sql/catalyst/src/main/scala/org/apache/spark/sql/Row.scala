@@ -456,13 +456,13 @@ trait Row extends Serializable {
   def mkString(start: String, sep: String, end: String): String = toSeq.mkString(start, sep, end)
 
   /**
-   * Returns the value at position i.
+   * Returns the value of a given fieldName.
    *
    * @throws UnsupportedOperationException when schema is not defined.
    * @throws ClassCastException when data type does not match.
    * @throws NullPointerException when value is null.
    */
   private def getAnyValAs[T <: AnyVal](i: Int): T =
-    if (isNullAt(i)) throw new NullPointerException(s"Value at index $i is null")
+    if (isNullAt(i)) throw new NullPointerException(s"Value at index $i in null")
     else getAs[T](i)
 }

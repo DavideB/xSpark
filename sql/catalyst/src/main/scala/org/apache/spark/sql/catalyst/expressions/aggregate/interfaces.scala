@@ -24,14 +24,14 @@ import org.apache.spark.sql.catalyst.expressions.codegen.CodegenFallback
 import org.apache.spark.sql.types._
 
 /** The mode of an [[AggregateFunction]]. */
-sealed trait AggregateMode
+private[sql] sealed trait AggregateMode
 
 /**
  * An [[AggregateFunction]] with [[Partial]] mode is used for partial aggregation.
  * This function updates the given aggregation buffer with the original input of this
  * function. When it has processed all input rows, the aggregation buffer is returned.
  */
-case object Partial extends AggregateMode
+private[sql] case object Partial extends AggregateMode
 
 /**
  * An [[AggregateFunction]] with [[PartialMerge]] mode is used to merge aggregation buffers
@@ -39,7 +39,7 @@ case object Partial extends AggregateMode
  * This function updates the given aggregation buffer by merging multiple aggregation buffers.
  * When it has processed all input rows, the aggregation buffer is returned.
  */
-case object PartialMerge extends AggregateMode
+private[sql] case object PartialMerge extends AggregateMode
 
 /**
  * An [[AggregateFunction]] with [[Final]] mode is used to merge aggregation buffers
@@ -47,7 +47,7 @@ case object PartialMerge extends AggregateMode
  * This function updates the given aggregation buffer by merging multiple aggregation buffers.
  * When it has processed all input rows, the final result of this function is returned.
  */
-case object Final extends AggregateMode
+private[sql] case object Final extends AggregateMode
 
 /**
  * An [[AggregateFunction]] with [[Complete]] mode is used to evaluate this function directly
@@ -55,13 +55,13 @@ case object Final extends AggregateMode
  * This function updates the given aggregation buffer with the original input of this
  * function. When it has processed all input rows, the final result of this function is returned.
  */
-case object Complete extends AggregateMode
+private[sql] case object Complete extends AggregateMode
 
 /**
  * A place holder expressions used in code-gen, it does not change the corresponding value
  * in the row.
  */
-case object NoOp extends Expression with Unevaluable {
+private[sql] case object NoOp extends Expression with Unevaluable {
   override def nullable: Boolean = true
   override def dataType: DataType = NullType
   override def children: Seq[Expression] = Nil
@@ -84,7 +84,7 @@ object AggregateExpression {
  * A container for an [[AggregateFunction]] with its [[AggregateMode]] and a field
  * (`isDistinct`) indicating if DISTINCT keyword is specified for this function.
  */
-case class AggregateExpression(
+private[sql] case class AggregateExpression(
     aggregateFunction: AggregateFunction,
     mode: AggregateMode,
     isDistinct: Boolean,

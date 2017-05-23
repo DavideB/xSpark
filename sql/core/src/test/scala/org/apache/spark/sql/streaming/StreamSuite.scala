@@ -17,12 +17,10 @@
 
 package org.apache.spark.sql.streaming
 
-import scala.reflect.ClassTag
-import scala.util.control.ControlThrowable
-
 import org.apache.spark.sql._
 import org.apache.spark.sql.execution.streaming._
 import org.apache.spark.sql.sources.StreamSourceProvider
+import org.apache.spark.sql.test.SharedSQLContext
 import org.apache.spark.sql.types.{IntegerType, StructField, StructType}
 import org.apache.spark.util.ManualClock
 
@@ -91,9 +89,9 @@ class StreamSuite extends StreamTest {
     def assertDF(df: DataFrame) {
       withTempDir { outputDir =>
         withTempDir { checkpointDir =>
-          val query = df.writeStream.format("parquet")
+          val query = df.write.format("parquet")
             .option("checkpointLocation", checkpointDir.getAbsolutePath)
-            .start(outputDir.getAbsolutePath)
+            .startStream(outputDir.getAbsolutePath)
           try {
             query.processAllAvailable()
             val outputDf = spark.read.parquet(outputDir.getAbsolutePath).as[Long]
@@ -105,7 +103,7 @@ class StreamSuite extends StreamTest {
       }
     }
 
-    val df = spark.readStream.format(classOf[FakeDefaultSource].getName).load()
+    val df = spark.read.format(classOf[FakeDefaultSource].getName).stream()
     assertDF(df)
     assertDF(df)
   }
@@ -122,12 +120,12 @@ class StreamSuite extends StreamTest {
     }
 
     // Running streaming plan as a batch query
-    assertError("start" :: Nil) {
+    assertError("startStream" :: Nil) {
       streamInput.toDS.map { i => i }.count()
     }
 
     // Running non-streaming plan with as a streaming query
-    assertError("without streaming sources" :: "start" :: Nil) {
+    assertError("without streaming sources" :: "startStream" :: Nil) {
       val ds = batchInput.map { i => i }
       testStream(ds)()
     }
@@ -161,7 +159,7 @@ class StreamSuite extends StreamTest {
 
     val inputData = MemoryStream[Int]
     testStream(inputData.toDS())(
-      StartStream(ProcessingTime("10 seconds"), new StreamManualClock),
+      StartStream(ProcessingTime("10 seconds"), new ManualClock),
 
       /* -- batch 0 ----------------------- */
       // Add some data in batch 0
@@ -199,7 +197,7 @@ class StreamSuite extends StreamTest {
 
       /* Stop then restart the Stream  */
       StopStream,
-      StartStream(ProcessingTime("10 seconds"), new StreamManualClock(60 * 1000)),
+      StartStream(ProcessingTime("10 seconds"), new ManualClock),
 
       /* -- batch 1 rerun ----------------- */
       // this batch 1 would re-run because the latest batch id logged in offset log is 1
@@ -238,67 +236,11 @@ class StreamSuite extends StreamTest {
     }
   }
 
-  testQuietly("fatal errors from a source should be sent to the user") {
-    for (e <- Seq(
-      new VirtualMachineError {},
-      new ThreadDeath,
-      new LinkageError,
-      new ControlThrowable {}
-    )) {
-      val source = new Source {
-        override def getOffset: Option[Offset] = {
-          throw e
-        }
-
-        override def getBatch(start: Option[Offset], end: Offset): DataFrame = {
-          throw e
-        }
-
-        override def schema: StructType = StructType(Array(StructField("value", IntegerType)))
-
-        override def stop(): Unit = {}
-      }
-      val df = Dataset[Int](sqlContext.sparkSession, StreamingExecutionRelation(source))
-      testStream(df)(
-        ExpectFailure()(ClassTag(e.getClass))
-      )
-    }
-  }
-
   test("output mode API in Scala") {
     val o1 = OutputMode.Append
     assert(o1 === InternalOutputModes.Append)
     val o2 = OutputMode.Complete
     assert(o2 === InternalOutputModes.Complete)
-  }
-
-  test("explain") {
-    val inputData = MemoryStream[String]
-    val df = inputData.toDS().map(_ + "foo")
-    // Test `explain` not throwing errors
-    df.explain()
-    val q = df.writeStream.queryName("memory_explain").format("memory").start()
-      .asInstanceOf[StreamExecution]
-    try {
-      assert("No physical plan. Waiting for data." === q.explainInternal(false))
-      assert("No physical plan. Waiting for data." === q.explainInternal(true))
-
-      inputData.addData("abc")
-      q.processAllAvailable()
-
-      val explainWithoutExtended = q.explainInternal(false)
-      // `extended = false` only displays the physical plan.
-      assert("LocalRelation".r.findAllMatchIn(explainWithoutExtended).size === 0)
-      assert("LocalTableScan".r.findAllMatchIn(explainWithoutExtended).size === 1)
-
-      val explainWithExtended = q.explainInternal(true)
-      // `extended = true` displays 3 logical plans (Parsed/Optimized/Optimized) and 1 physical
-      // plan.
-      assert("LocalRelation".r.findAllMatchIn(explainWithExtended).size === 3)
-      assert("LocalTableScan".r.findAllMatchIn(explainWithExtended).size === 1)
-    } finally {
-      q.stop()
-    }
   }
 }
 
@@ -340,8 +282,6 @@ class FakeDefaultSource extends StreamSourceProvider {
         val startOffset = start.map(_.asInstanceOf[LongOffset].offset).getOrElse(-1L) + 1
         spark.range(startOffset, end.asInstanceOf[LongOffset].offset + 1).toDF("a")
       }
-
-      override def stop() {}
     }
   }
 }

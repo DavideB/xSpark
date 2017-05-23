@@ -18,7 +18,6 @@
 package org.apache.spark.sql.execution.metric
 
 import java.text.NumberFormat
-import java.util.Locale
 
 import org.apache.spark.SparkContext
 import org.apache.spark.scheduler.AccumulableInfo
@@ -56,17 +55,17 @@ class SQLMetric(val metricType: String, initValue: Long = 0L) extends Accumulato
   override def value: Long = _value
 
   // Provide special identifier as metadata so we can tell that this is a `SQLMetric` later
-  override def toInfo(update: Option[Any], value: Option[Any]): AccumulableInfo = {
+  private[spark] override def toInfo(update: Option[Any], value: Option[Any]): AccumulableInfo = {
     new AccumulableInfo(
       id, name, update, value, true, true, Some(AccumulatorContext.SQL_ACCUM_IDENTIFIER))
   }
 }
 
 
-object SQLMetrics {
-  private val SUM_METRIC = "sum"
-  private val SIZE_METRIC = "size"
-  private val TIMING_METRIC = "timing"
+private[sql] object SQLMetrics {
+  private[sql] val SUM_METRIC = "sum"
+  private[sql] val SIZE_METRIC = "size"
+  private[sql] val TIMING_METRIC = "timing"
 
   def createMetric(sc: SparkContext, name: String): SQLMetric = {
     val acc = new SQLMetric(SUM_METRIC)
@@ -102,8 +101,7 @@ object SQLMetrics {
    */
   def stringValue(metricsType: String, values: Seq[Long]): String = {
     if (metricsType == SUM_METRIC) {
-      val numberFormat = NumberFormat.getIntegerInstance(Locale.ENGLISH)
-      numberFormat.format(values.sum)
+      NumberFormat.getInstance().format(values.sum)
     } else {
       val strFormat: Long => String = if (metricsType == SIZE_METRIC) {
         Utils.bytesToString

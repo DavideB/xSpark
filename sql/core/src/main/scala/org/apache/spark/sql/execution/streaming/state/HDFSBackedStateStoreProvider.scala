@@ -159,7 +159,7 @@ private[state] class HDFSBackedStateStoreProvider(
       } catch {
         case NonFatal(e) =>
           throw new IllegalStateException(
-            s"Error committing version $newVersion into $this", e)
+            s"Error committing version $newVersion into ${HDFSBackedStateStoreProvider.this}", e)
       }
     }
 
@@ -197,17 +197,11 @@ private[state] class HDFSBackedStateStoreProvider(
       allUpdates.values().asScala.toIterator
     }
 
-    override def numKeys(): Long = mapToUpdate.size()
-
     /**
      * Whether all updates have been committed
      */
     override private[state] def hasCommitted: Boolean = {
       state == COMMITTED
-    }
-
-    override def toString(): String = {
-      s"HDFSStateStore[id = (op=${id.operatorId}, part=${id.partitionId}), dir = $baseDir]"
     }
   }
 
@@ -219,7 +213,7 @@ private[state] class HDFSBackedStateStoreProvider(
       newMap.putAll(loadMap(version))
     }
     val store = new HDFSBackedStateStore(version, newMap)
-    logInfo(s"Retrieved version $version of ${HDFSBackedStateStoreProvider.this} for update")
+    logInfo(s"Retrieved version $version of $this for update")
     store
   }
 
@@ -235,7 +229,7 @@ private[state] class HDFSBackedStateStoreProvider(
   }
 
   override def toString(): String = {
-    s"HDFSStateStoreProvider[id = (op=${id.operatorId}, part=${id.partitionId}), dir = $baseDir]"
+    s"StateStore[id = (op=${id.operatorId}, part=${id.partitionId}), dir = $baseDir]"
   }
 
   /* Internal classes and methods */
@@ -254,9 +248,7 @@ private[state] class HDFSBackedStateStoreProvider(
   private def commitUpdates(newVersion: Long, map: MapType, tempDeltaFile: Path): Path = {
     synchronized {
       val finalDeltaFile = deltaFile(newVersion)
-      if (!fs.rename(tempDeltaFile, finalDeltaFile)) {
-        throw new IOException(s"Failed to rename $tempDeltaFile to $finalDeltaFile")
-      }
+      fs.rename(tempDeltaFile, finalDeltaFile)
       loadedMaps.put(newVersion, map)
       finalDeltaFile
     }
@@ -497,12 +489,10 @@ private[state] class HDFSBackedStateStoreProvider(
             val mapsToRemove = loadedMaps.keys.filter(_ < earliestVersionToRetain).toSeq
             mapsToRemove.foreach(loadedMaps.remove)
           }
-          val filesToDelete = files.filter(_.version < earliestFileToRetain.version)
-          filesToDelete.foreach { f =>
+          files.filter(_.version < earliestFileToRetain.version).foreach { f =>
             fs.delete(f.path, true)
           }
-          logInfo(s"Deleted files older than ${earliestFileToRetain.version} for $this: " +
-            filesToDelete.mkString(", "))
+          logInfo(s"Deleted files older than ${earliestFileToRetain.version} for $this")
         }
       }
     } catch {
@@ -525,7 +515,7 @@ private[state] class HDFSBackedStateStoreProvider(
 
         val deltaFiles = allFiles.filter { file =>
           file.version > snapshotFile.version && file.version <= version
-        }.toList
+        }
         verify(
           deltaFiles.size == version - snapshotFile.version,
           s"Unexpected list of delta files for version $version for $this: $deltaFiles"
@@ -566,7 +556,7 @@ private[state] class HDFSBackedStateStoreProvider(
       }
     }
     val storeFiles = versionToFiles.values.toSeq.sortBy(_.version)
-    logDebug(s"Current set of files for $this: ${storeFiles.mkString(", ")}")
+    logDebug(s"Current set of files for $this: $storeFiles")
     storeFiles
   }
 

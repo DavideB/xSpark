@@ -38,11 +38,11 @@ import org.apache.spark.unsafe.types.UTF8String
 /**
  * Data corresponding to one partition of a JDBCRDD.
  */
-case class JDBCPartition(whereClause: String, idx: Int) extends Partition {
+private[sql] case class JDBCPartition(whereClause: String, idx: Int) extends Partition {
   override def index: Int = idx
 }
 
-object JDBCRDD extends Logging {
+private[sql] object JDBCRDD extends Logging {
 
   /**
    * Maps a JDBC type to a Catalyst type.  This function is called only when
@@ -136,16 +136,7 @@ object JDBCRDD extends Logging {
             val typeName = rsmd.getColumnTypeName(i + 1)
             val fieldSize = rsmd.getPrecision(i + 1)
             val fieldScale = rsmd.getScale(i + 1)
-            val isSigned = {
-              try {
-                rsmd.isSigned(i + 1)
-              } catch {
-                // Workaround for HIVE-14684:
-                case e: SQLException if
-                  e.getMessage == "Method not supported" &&
-                  rsmd.getClass.getName == "org.apache.hive.jdbc.HiveResultSetMetaData" => true
-              }
-            }
+            val isSigned = rsmd.isSigned(i + 1)
             val nullable = rsmd.isNullable(i + 1) != ResultSetMetaData.columnNoNulls
             val metadata = new MetadataBuilder()
               .putString("name", columnName)
@@ -201,7 +192,7 @@ object JDBCRDD extends Logging {
    * Turns a single Filter into a String representing a SQL expression.
    * Returns None for an unhandled filter.
    */
-  def compileFilter(f: Filter): Option[String] = {
+  private[jdbc] def compileFilter(f: Filter): Option[String] = {
     Option(f match {
       case EqualTo(attr, value) => s"$attr = ${compileValue(value)}"
       case EqualNullSafe(attr, value) =>
@@ -284,7 +275,7 @@ object JDBCRDD extends Logging {
  * driver code and the workers must be able to access the database; the driver
  * needs to fetch the schema while the workers need to fetch the data.
  */
-private[jdbc] class JDBCRDD(
+private[sql] class JDBCRDD(
     sc: SparkContext,
     getConnection: () => Connection,
     schema: StructType,
@@ -314,14 +305,14 @@ private[jdbc] class JDBCRDD(
    * `filters`, but as a WHERE clause suitable for injection into a SQL query.
    */
   private val filterWhereClause: String =
-    filters.flatMap(JDBCRDD.compileFilter).map(p => s"($p)").mkString(" AND ")
+    filters.flatMap(JDBCRDD.compileFilter).mkString(" AND ")
 
   /**
    * A WHERE clause representing both `filters`, if any, and the current partition.
    */
   private def getWhereClause(part: JDBCPartition): String = {
     if (part.whereClause != null && filterWhereClause.length > 0) {
-      "WHERE " + s"($filterWhereClause)" + " AND " + s"(${part.whereClause})"
+      "WHERE " + filterWhereClause + " AND " + part.whereClause
     } else if (part.whereClause != null) {
       "WHERE " + part.whereClause
     } else if (filterWhereClause.length > 0) {
@@ -383,7 +374,6 @@ private[jdbc] class JDBCRDD(
     var nextValue: InternalRow = null
 
     context.addTaskCompletionListener{ context => close() }
-    val inputMetrics = context.taskMetrics().inputMetrics
     val part = thePart.asInstanceOf[JDBCPartition]
     val conn = getConnection()
     val dialect = JdbcDialects.get(url)
@@ -399,11 +389,7 @@ private[jdbc] class JDBCRDD(
     val sqlText = s"SELECT $columnList FROM $fqTable $myWhereClause"
     val stmt = conn.prepareStatement(sqlText,
         ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
-    val fetchSize = properties.getProperty(JdbcUtils.JDBC_BATCH_FETCH_SIZE, "0").toInt
-    require(fetchSize >= 0,
-      s"Invalid value `${fetchSize.toString}` for parameter " +
-      s"`${JdbcUtils.JDBC_BATCH_FETCH_SIZE}`. The minimum value is 0. When the value is 0, " +
-      "the JDBC driver ignores the value and does the estimates.")
+    val fetchSize = properties.getProperty("fetchsize", "0").toInt
     stmt.setFetchSize(fetchSize)
     val rs = stmt.executeQuery()
 
@@ -412,7 +398,6 @@ private[jdbc] class JDBCRDD(
 
     def getNext(): InternalRow = {
       if (rs.next()) {
-        inputMetrics.incRecordsRead(1)
         var i = 0
         while (i < conversions.length) {
           val pos = i + 1

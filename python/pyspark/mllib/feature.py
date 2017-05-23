@@ -60,6 +60,8 @@ class VectorTransformer(object):
 
 class Normalizer(VectorTransformer):
     """
+    .. note:: Experimental
+
     Normalizes samples individually to unit L\ :sup:`p`\  norm
 
     For any 1 <= `p` < float('inf'), normalizes samples using
@@ -129,6 +131,8 @@ class JavaVectorTransformer(JavaModelWrapper, VectorTransformer):
 
 class StandardScalerModel(JavaVectorTransformer):
     """
+    .. note:: Experimental
+
     Represents a StandardScaler model that can transform vectors.
 
     .. versionadded:: 1.2.0
@@ -203,6 +207,8 @@ class StandardScalerModel(JavaVectorTransformer):
 
 class StandardScaler(object):
     """
+    .. note:: Experimental
+
     Standardizes features by removing the mean and scaling to unit
     variance using column summary statistics on the samples in the
     training set.
@@ -256,6 +262,8 @@ class StandardScaler(object):
 
 class ChiSqSelectorModel(JavaVectorTransformer):
     """
+    .. note:: Experimental
+
     Represents a Chi Squared selector model.
 
     .. versionadded:: 1.4.0
@@ -274,6 +282,8 @@ class ChiSqSelectorModel(JavaVectorTransformer):
 
 class ChiSqSelector(object):
     """
+    .. note:: Experimental
+
     Creates a ChiSquared feature selector.
 
     :param numTopFeatures: number of features that selector will select.
@@ -351,6 +361,8 @@ class PCA(object):
 
 class HashingTF(object):
     """
+    .. note:: Experimental
+
     Maps a sequence of terms to their term frequencies using the hashing
     trick.
 
@@ -436,6 +448,8 @@ class IDFModel(JavaVectorTransformer):
 
 class IDF(object):
     """
+    .. note:: Experimental
+
     Inverse document frequency (IDF).
 
     The standard formulation is used: `idf = log((m + 1) / (d(t) + 1))`,
@@ -539,13 +553,14 @@ class Word2VecModel(JavaVectorTransformer, JavaSaveable, JavaLoader):
         """
         jmodel = sc._jvm.org.apache.spark.mllib.feature \
             .Word2VecModel.load(sc._jsc.sc(), path)
-        model = sc._jvm.org.apache.spark.mllib.api.python.Word2VecModelWrapper(jmodel)
+        model = sc._jvm.Word2VecModelWrapper(jmodel)
         return Word2VecModel(model)
 
 
 @ignore_unicode_prefix
 class Word2Vec(object):
-    """Word2Vec creates vector representation of words in a text corpus.
+    """
+    Word2Vec creates vector representation of words in a text corpus.
     The algorithm first constructs a vocabulary from the corpus
     and then learns vector representation of words in the vocabulary.
     The vector representation can be used as features in
@@ -567,19 +582,13 @@ class Word2Vec(object):
     >>> doc = sc.parallelize(localDoc).map(lambda line: line.split(" "))
     >>> model = Word2Vec().setVectorSize(10).setSeed(42).fit(doc)
 
-    Querying for synonyms of a word will not return that word:
-
     >>> syms = model.findSynonyms("a", 2)
     >>> [s[0] for s in syms]
     [u'b', u'c']
-
-    But querying for synonyms of a vector may return the word whose
-    representation is that vector:
-
     >>> vec = model.transform("a")
     >>> syms = model.findSynonyms(vec, 2)
     >>> [s[0] for s in syms]
-    [u'a', u'b']
+    [u'b', u'c']
 
     >>> import os, tempfile
     >>> path = tempfile.mkdtemp()
@@ -597,7 +606,6 @@ class Word2Vec(object):
     ...     pass
 
     .. versionadded:: 1.2.0
-
     """
     def __init__(self):
         """
@@ -689,6 +697,8 @@ class Word2Vec(object):
 
 class ElementwiseProduct(VectorTransformer):
     """
+    .. note:: Experimental
+
     Scales each column of the vector, with the supplied weight vector.
     i.e the elementwise product.
 

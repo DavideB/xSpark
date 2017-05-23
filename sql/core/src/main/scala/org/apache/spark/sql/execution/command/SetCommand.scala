@@ -129,4 +129,6 @@ case object ResetCommand extends RunnableCommand with Logging {
     sparkSession.sessionState.conf.clear()
     Seq.empty[Row]
   }
+
+  override val output: Seq[Attribute] = Seq.empty
 }

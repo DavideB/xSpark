@@ -17,7 +17,7 @@
 
 context("SerDe functionality")
 
-sparkSession <- sparkR.session()
+sc <- sparkR.init()
 
 test_that("SerDe of primitive types", {
   x <- callJStatic("SparkRHandler", "echo", 1L)

@@ -1053,14 +1053,7 @@ private[spark] class Client(
           case YarnApplicationState.RUNNING =>
             reportLauncherState(SparkAppHandle.State.RUNNING)
           case YarnApplicationState.FINISHED =>
-            report.getFinalApplicationStatus match {
-              case FinalApplicationStatus.FAILED =>
-                reportLauncherState(SparkAppHandle.State.FAILED)
-              case FinalApplicationStatus.KILLED =>
-                reportLauncherState(SparkAppHandle.State.KILLED)
-              case _ =>
-                reportLauncherState(SparkAppHandle.State.FINISHED)
-            }
+            reportLauncherState(SparkAppHandle.State.FINISHED)
           case YarnApplicationState.FAILED =>
             reportLauncherState(SparkAppHandle.State.FAILED)
           case YarnApplicationState.KILLED =>
@@ -1148,10 +1141,10 @@ private[spark] class Client(
         val pyLibPath = Seq(sys.env("SPARK_HOME"), "python", "lib").mkString(File.separator)
         val pyArchivesFile = new File(pyLibPath, "pyspark.zip")
         require(pyArchivesFile.exists(),
-          s"$pyArchivesFile not found; cannot run pyspark application in YARN mode.")
-        val py4jFile = new File(pyLibPath, "py4j-0.10.3-src.zip")
+          "pyspark.zip not found; cannot run pyspark application in YARN mode.")
+        val py4jFile = new File(pyLibPath, "py4j-0.10.1-src.zip")
         require(py4jFile.exists(),
-          s"$py4jFile not found; cannot run pyspark application in YARN mode.")
+          "py4j-0.10.1-src.zip not found; cannot run pyspark application in YARN mode.")
         Seq(pyArchivesFile.getAbsolutePath(), py4jFile.getAbsolutePath())
       }
   }
@@ -1170,10 +1163,7 @@ private object Client extends Logging {
     // Note that any env variable with the SPARK_ prefix gets propagated to all (remote) processes
     System.setProperty("SPARK_YARN_MODE", "true")
     val sparkConf = new SparkConf
-    // SparkSubmit would use yarn cache to distribute files & jars in yarn mode,
-    // so remove them from sparkConf here for yarn mode.
-    sparkConf.remove("spark.jars")
-    sparkConf.remove("spark.files")
+
     val args = new ClientArguments(argStrings)
     new Client(args, sparkConf).run()
   }

@@ -20,7 +20,6 @@ package org.apache.spark.sql.sources
 import java.io.File
 
 import org.apache.spark.sql.{AnalysisException, Row}
-import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.test.SharedSQLContext
 import org.apache.spark.util.Utils
 
@@ -88,13 +87,15 @@ class InsertSuite extends DataSourceTest with SharedSQLContext {
   }
 
   test("SELECT clause generating a different number of columns is not allowed.") {
-    val message = intercept[AnalysisException] {
+    val message = intercept[RuntimeException] {
       sql(
         s"""
         |INSERT OVERWRITE TABLE jsonTable SELECT a FROM jt
       """.stripMargin)
     }.getMessage
-    assert(message.contains("the number of columns are different")
+    assert(
+      message.contains("generates the same number of columns as its schema"),
+      "SELECT clause generating a different number of columns should not be not allowed."
     )
   }
 
@@ -229,48 +230,6 @@ class InsertSuite extends DataSourceTest with SharedSQLContext {
 //    assertCached(sql("SELECT * FROM jsonTable"), 0)
   }
 
-  test("INSERT INTO TABLE with Comment in columns") {
-    val tabName = "tab1"
-    withTable(tabName) {
-      sql(
-        s"""
-           |CREATE TABLE $tabName(col1 int COMMENT 'a', col2 int)
-           |USING parquet
-         """.stripMargin)
-      sql(s"INSERT INTO TABLE $tabName SELECT 1, 2")
-
-      checkAnswer(
-        sql(s"SELECT col1, col2 FROM $tabName"),
-        Row(1, 2) :: Nil
-      )
-    }
-  }
-
-  test("INSERT INTO TABLE - complex type but different names") {
-    val tab1 = "tab1"
-    val tab2 = "tab2"
-    withTable(tab1, tab2) {
-      sql(
-        s"""
-           |CREATE TABLE $tab1 (s struct<a: string, b: string>)
-           |USING parquet
-         """.stripMargin)
-      sql(s"INSERT INTO TABLE $tab1 SELECT named_struct('col1','1','col2','2')")
-
-      sql(
-        s"""
-           |CREATE TABLE $tab2 (p struct<c: string, d: string>)
-           |USING parquet
-         """.stripMargin)
-      sql(s"INSERT INTO TABLE $tab2 SELECT * FROM $tab1")
-
-      checkAnswer(
-        spark.table(tab1),
-        spark.table(tab2)
-      )
-    }
-  }
-
   test("it's not allowed to insert into a relation that is not an InsertableRelation") {
     sql(
       """
@@ -299,29 +258,5 @@ class InsertSuite extends DataSourceTest with SharedSQLContext {
     )
 
     spark.catalog.dropTempView("oneToTen")
-  }
-
-  test("SPARK-15824 - Execute an INSERT wrapped in a WITH statement immediately") {
-    withTable("target", "target2") {
-      sql(s"CREATE TABLE target(a INT, b STRING) USING JSON")
-      sql("WITH tbl AS (SELECT * FROM jt) INSERT OVERWRITE TABLE target SELECT a, b FROM tbl")
-      checkAnswer(
-        sql("SELECT a, b FROM target"),
-        sql("SELECT a, b FROM jt")
-      )
-
-      sql(s"CREATE TABLE target2(a INT, b STRING) USING JSON")
-      val e = sql(
-        """
-          |WITH tbl AS (SELECT * FROM jt)
-          |FROM tbl
-          |INSERT INTO target2 SELECT a, b WHERE a <= 5
-          |INSERT INTO target2 SELECT a, b WHERE a > 5
-        """.stripMargin)
-      checkAnswer(
-        sql("SELECT a, b FROM target2"),
-        sql("SELECT a, b FROM jt")
-      )
-    }
   }
 }

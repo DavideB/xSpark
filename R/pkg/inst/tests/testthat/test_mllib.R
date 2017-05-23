@@ -20,7 +20,10 @@ library(testthat)
 context("MLlib functions")
 
 # Tests for MLlib functions in SparkR
-sparkSession <- sparkR.session()
+
+sc <- sparkR.init()
+
+sqlContext <- sparkRSQL.init(sc)
 
 test_that("formula of spark.glm", {
   training <- suppressWarnings(createDataFrame(iris))
@@ -288,7 +291,7 @@ test_that("spark.kmeans", {
 
   take(training, 1)
 
-  model <- spark.kmeans(data = training, ~ ., k = 2, maxIter = 10, initMode = "random")
+  model <- spark.kmeans(data = training, ~ ., k = 2)
   sample <- take(select(predict(model, training), "prediction"), 1)
   expect_equal(typeof(sample$prediction), "integer")
   expect_equal(sample$prediction, 1)
@@ -363,7 +366,7 @@ test_that("spark.naiveBayes", {
   t <- as.data.frame(Titanic)
   t1 <- t[t$Freq > 0, -5]
   df <- suppressWarnings(createDataFrame(t1))
-  m <- spark.naiveBayes(df, Survived ~ ., smoothing = 0.0)
+  m <- spark.naiveBayes(df, Survived ~ .)
   s <- summary(m)
   expect_equal(as.double(s$apriori[1, "Yes"]), 0.5833333, tolerance = 1e-6)
   expect_equal(sum(s$apriori), 1)

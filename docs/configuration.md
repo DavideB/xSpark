@@ -123,7 +123,6 @@ of the most common options to set are:
     Number of cores to use for the driver process, only in cluster mode.
   </td>
 </tr>
-<tr>
   <td><code>spark.driver.maxResultSize</code></td>
   <td>1g</td>
   <td>
@@ -218,7 +217,7 @@ Apart from these, the following properties are also available, and may be useful
     <br /><em>Note:</em> In client mode, this config must not be set through the <code>SparkConf</code>
     directly in your application, because the driver JVM has already started at that point.
     Instead, please set this through the <code>--driver-class-path</code> command line option or in
-    your default properties file.
+    your default properties file.</td>
   </td>
 </tr>
 <tr>
@@ -245,7 +244,7 @@ Apart from these, the following properties are also available, and may be useful
     <br /><em>Note:</em> In client mode, this config must not be set through the <code>SparkConf</code>
     directly in your application, because the driver JVM has already started at that point.
     Instead, please set this through the <code>--driver-library-path</code> command line option or in
-    your default properties file.
+    your default properties file.</td>
   </td>
 </tr>
 <tr>
@@ -291,14 +290,6 @@ Apart from these, the following properties are also available, and may be useful
   <td>
     Sets the number of latest rolling log files that are going to be retained by the system.
     Older log files will be deleted. Disabled by default.
-  </td>
-</tr>
-<tr>
-  <td><code>spark.executor.logs.rolling.enableCompression</code></td>
-  <td>false</td>
-  <td>
-    Enable executor log compression. If it is enabled, the rolled executor logs will be compressed.
-    Disabled by default.
   </td>
 </tr>
 <tr>
@@ -607,14 +598,6 @@ Apart from these, the following properties are also available, and may be useful
   </td>
 </tr>
 <tr>
-  <td><code>spark.ui.retainedTasks</code></td>
-  <td>100000</td>
-  <td>
-    How many tasks the Spark UI and status APIs remember before garbage
-    collecting.
-  </td>
-</tr>
-<tr>
   <td><code>spark.worker.ui.retainedExecutors</code></td>
   <td>1000</td>
   <td>
@@ -795,15 +778,14 @@ Apart from these, the following properties are also available, and may be useful
 <tr><th>Property Name</th><th>Default</th><th>Meaning</th></tr>
 <tr>
   <td><code>spark.memory.fraction</code></td>
-  <td>0.6</td>
+  <td>0.75</td>
   <td>
     Fraction of (heap space - 300MB) used for execution and storage. The lower this is, the
     more frequently spills and cached data eviction occur. The purpose of this config is to set
     aside memory for internal metadata, user data structures, and imprecise size estimation
     in the case of sparse, unusually large records. Leaving this at the default value is
-    recommended. For more detail, including important information about correctly tuning JVM
-    garbage collection when increasing this value, see
-    <a href="tuning.html#memory-management-overview">this description</a>.
+    recommended. For more detail, see <a href="tuning.html#memory-management-overview">
+    this description</a>.
   </td>
 </tr>
 <tr>
@@ -1191,7 +1173,7 @@ Apart from these, the following properties are also available, and may be useful
   <td><code>spark.speculation.quantile</code></td>
   <td>0.75</td>
   <td>
-    Fraction of tasks which must be complete before speculation is enabled for a particular stage.
+    Percentage of tasks which must be complete before speculation is enabled for a particular stage.
   </td>
 </tr>
 <tr>
@@ -1205,9 +1187,7 @@ Apart from these, the following properties are also available, and may be useful
   <td><code>spark.task.maxFailures</code></td>
   <td>4</td>
   <td>
-    Number of failures of any particular task before giving up on the job.
-    The total number of failures spread across different tasks will not cause the job
-    to fail; a particular task has to fail this number of attempts.
+    Number of individual task failures before giving up on the job.
     Should be greater than or equal to 1. Number of allowed retries = this value - 1.
   </td>
 </tr>
@@ -1221,7 +1201,7 @@ Apart from these, the following properties are also available, and may be useful
   <td>false</td>
   <td>
     Whether to use dynamic resource allocation, which scales the number of executors registered
-    with this application up and down based on the workload.
+    with this application up and down based on the workload. 
     For more detail, see the description
     <a href="job-scheduling.html#dynamic-resource-allocation">here</a>.
     <br><br>
@@ -1255,9 +1235,6 @@ Apart from these, the following properties are also available, and may be useful
   <td><code>spark.dynamicAllocation.minExecutors</code></td>
   <td>
     Initial number of executors to run if dynamic allocation is enabled.
-    <br /><br />
-    If `--num-executors` (or `spark.executor.instances`) is set and larger than this value, it will
-    be used as the initial number of executors.
   </td>
 </tr>
 <tr>
@@ -1362,9 +1339,8 @@ Apart from these, the following properties are also available, and may be useful
   <td><code>spark.authenticate.enableSaslEncryption</code></td>
   <td>false</td>
   <td>
-    Enable encrypted communication when authentication is
-    enabled. This is supported by the block transfer service and the
-    RPC endpoints.
+    Enable encrypted communication when authentication is enabled. This option is currently
+    only supported by the block transfer service.
   </td>
 </tr>
 <tr>
@@ -1466,10 +1442,8 @@ Apart from these, the following properties are also available, and may be useful
             the properties must be overwritten in the protocol-specific namespace.</p>
 
             <p>Use <code>spark.ssl.YYY.XXX</code> settings to overwrite the global configuration for
-            particular protocol denoted by <code>YYY</code>. Example values for <code>YYY</code>
-            include <code>fs</code>, <code>ui</code>, <code>standalone</code>, and
-            <code>historyServer</code>.  See <a href="security.html#ssl-configuration">SSL
-            Configuration</a> for details on hierarchical SSL configuration for services.</p>
+            particular protocol denoted by <code>YYY</code>. Currently <code>YYY</code> can be
+            only <code>fs</code> for file server.</p>
         </td>
     </tr>
     <tr>
@@ -1586,8 +1560,8 @@ spark.sql("SET -v").show(n=200, truncate=False)
 <div data-lang="r"  markdown="1">
 
 {% highlight r %}
-sparkR.session()
-properties <- sql("SET -v")
+# sqlContext is an existing sqlContext.
+properties <- sql(sqlContext, "SET -v")
 showDF(properties, numRows = 200, truncate = FALSE)
 {% endhighlight %}
 

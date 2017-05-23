@@ -26,17 +26,16 @@ import scala.util.Try
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars
 import org.scalatest.BeforeAndAfter
 
-import org.apache.spark.SparkFiles
-import org.apache.spark.sql.{AnalysisException, DataFrame, Row, SparkSession}
+import org.apache.spark.{SparkException, SparkFiles}
+import org.apache.spark.sql.{AnalysisException, DataFrame, Row}
 import org.apache.spark.sql.catalyst.expressions.Cast
 import org.apache.spark.sql.catalyst.parser.ParseException
 import org.apache.spark.sql.catalyst.plans.logical.Project
 import org.apache.spark.sql.execution.joins.BroadcastNestedLoopJoinExec
 import org.apache.spark.sql.hive._
-import org.apache.spark.sql.hive.test.TestHive
+import org.apache.spark.sql.hive.test.{TestHive, TestHiveContext}
 import org.apache.spark.sql.hive.test.TestHive._
 import org.apache.spark.sql.internal.SQLConf
-import org.apache.spark.sql.test.SQLTestUtils
 
 case class TestData(a: Int, b: String)
 
@@ -44,15 +43,13 @@ case class TestData(a: Int, b: String)
  * A set of test cases expressed in Hive QL that are not covered by the tests
  * included in the hive distribution.
  */
-class HiveQuerySuite extends HiveComparisonTest with SQLTestUtils with BeforeAndAfter {
+class HiveQuerySuite extends HiveComparisonTest with BeforeAndAfter {
   private val originalTimeZone = TimeZone.getDefault
   private val originalLocale = Locale.getDefault
 
   import org.apache.spark.sql.hive.test.TestHive.implicits._
 
   private val originalCrossJoinEnabled = TestHive.conf.crossJoinEnabled
-
-  def spark: SparkSession = sparkSession
 
   override def beforeAll() {
     super.beforeAll()
@@ -218,6 +215,15 @@ class HiveQuerySuite extends HiveComparisonTest with SQLTestUtils with BeforeAnd
       .collect().head
     assert(new Timestamp(1000) == r1.getTimestamp(0))
   }
+
+  createQueryTest("constant array",
+  """
+    |SELECT sort_array(
+    |  sort_array(
+    |    array("hadoop distributed file system",
+    |          "enterprise databases", "hadoop map-reduce")))
+    |FROM src LIMIT 1;
+  """.stripMargin)
 
   createQueryTest("null case",
     "SELECT case when(true) then 1 else null end FROM src LIMIT 1")
@@ -828,8 +834,8 @@ class HiveQuerySuite extends HiveComparisonTest with SQLTestUtils with BeforeAnd
 
     assertResult(
       Array(
-        Row("a", "int", null),
-        Row("b", "string", null))
+        Row("a", "int", ""),
+        Row("b", "string", ""))
     ) {
       sql("DESCRIBE test_describe_commands2")
         .select('col_name, 'data_type, 'comment)
@@ -1000,7 +1006,7 @@ class HiveQuerySuite extends HiveComparisonTest with SQLTestUtils with BeforeAnd
     sql("SET hive.exec.dynamic.partition.mode=nonstrict")
 
     // Should throw when a static partition appears after a dynamic partition
-    intercept[AnalysisException] {
+    intercept[SparkException] {
       sql(
         """INSERT INTO TABLE dp_test PARTITION(dp, sp = 1)
           |SELECT key, value, key % 5 FROM src
@@ -1027,14 +1033,14 @@ class HiveQuerySuite extends HiveComparisonTest with SQLTestUtils with BeforeAnd
     sql("SELECT * FROM boom").queryExecution.analyzed
   }
 
-  test("SPARK-3810: PreprocessTableInsertion static partitioning support") {
+  test("SPARK-3810: PreInsertionCasts static partitioning support") {
     val analyzedPlan = {
       loadTestTable("srcpart")
       sql("DROP TABLE IF EXISTS withparts")
       sql("CREATE TABLE withparts LIKE srcpart")
       sql("INSERT INTO TABLE withparts PARTITION(ds='1', hr='2') SELECT key, value FROM src")
         .queryExecution.analyzed
-      }
+    }
 
     assertResult(1, "Duplicated project detected\n" + analyzedPlan) {
       analyzedPlan.collect {
@@ -1043,7 +1049,7 @@ class HiveQuerySuite extends HiveComparisonTest with SQLTestUtils with BeforeAnd
     }
   }
 
-  test("SPARK-3810: PreprocessTableInsertion dynamic partitioning support") {
+  test("SPARK-3810: PreInsertionCasts dynamic partitioning support") {
     val analyzedPlan = {
       loadTestTable("srcpart")
       sql("DROP TABLE IF EXISTS withparts")
@@ -1051,11 +1057,11 @@ class HiveQuerySuite extends HiveComparisonTest with SQLTestUtils with BeforeAnd
       sql("SET hive.exec.dynamic.partition.mode=nonstrict")
 
       sql("CREATE TABLE IF NOT EXISTS withparts LIKE srcpart")
-      sql("INSERT INTO TABLE withparts PARTITION(ds, hr) SELECT key, value, '1', '2' FROM src")
+      sql("INSERT INTO TABLE withparts PARTITION(ds, hr) SELECT key, value FROM src")
         .queryExecution.analyzed
     }
 
-    assertResult(2, "Duplicated project detected\n" + analyzedPlan) {
+    assertResult(1, "Duplicated project detected\n" + analyzedPlan) {
       analyzedPlan.collect {
         case _: Project => ()
       }.size
@@ -1205,27 +1211,6 @@ class HiveQuerySuite extends HiveComparisonTest with SQLTestUtils with BeforeAnd
       sql("CREATE TEMPORARY MACRO SIGMOID (x DOUBLE) 1.0 / (1.0 + EXP(-x))")
     }
     assertUnsupportedFeature { sql("DROP TEMPORARY MACRO SIGMOID") }
-  }
-
-  test("dynamic partitioning is allowed when hive.exec.dynamic.partition.mode is nonstrict") {
-    val modeConfKey = "hive.exec.dynamic.partition.mode"
-    withTable("with_parts") {
-      sql("CREATE TABLE with_parts(key INT) PARTITIONED BY (p INT)")
-
-      withSQLConf(modeConfKey -> "nonstrict") {
-        sql("INSERT OVERWRITE TABLE with_parts partition(p) select 1, 2")
-        assert(spark.table("with_parts").filter($"p" === 2).collect().head == Row(1, 2))
-      }
-
-      val originalValue = spark.sparkContext.hadoopConfiguration.get(modeConfKey, "nonstrict")
-      try {
-        spark.sparkContext.hadoopConfiguration.set(modeConfKey, "nonstrict")
-        sql("INSERT OVERWRITE TABLE with_parts partition(p) select 3, 4")
-        assert(spark.table("with_parts").filter($"p" === 4).collect().head == Row(3, 4))
-      } finally {
-        spark.sparkContext.hadoopConfiguration.set(modeConfKey, originalValue)
-      }
-    }
   }
 }
 

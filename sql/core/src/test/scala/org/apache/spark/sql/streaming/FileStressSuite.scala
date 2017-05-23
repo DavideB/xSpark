@@ -57,7 +57,7 @@ class FileStressSuite extends StreamTest {
     @volatile
     var continue = true
     @volatile
-    var stream: StreamingQuery = null
+    var stream: ContinuousQuery = null
 
     val writer = new Thread("stream writer") {
       override def run(): Unit = {
@@ -98,9 +98,9 @@ class FileStressSuite extends StreamTest {
     }
     writer.start()
 
-    val input = spark.readStream.format("text").load(inputDir)
+    val input = spark.read.format("text").stream(inputDir)
 
-    def startStream(): StreamingQuery = {
+    def startStream(): ContinuousQuery = {
       val output = input
         .repartition(5)
         .as[String]
@@ -116,17 +116,17 @@ class FileStressSuite extends StreamTest {
 
       if (partitionWrites) {
         output
-          .writeStream
+          .write
           .partitionBy("id")
           .format("parquet")
           .option("checkpointLocation", checkpoint)
-          .start(outputDir)
+          .startStream(outputDir)
       } else {
         output
-          .writeStream
+          .write
           .format("parquet")
           .option("checkpointLocation", checkpoint)
-          .start(outputDir)
+          .startStream(outputDir)
       }
     }
 
@@ -139,7 +139,7 @@ class FileStressSuite extends StreamTest {
         try {
           stream.awaitTermination()
         } catch {
-          case ce: StreamingQueryException =>
+          case ce: ContinuousQueryException =>
             failures += 1
         }
       }

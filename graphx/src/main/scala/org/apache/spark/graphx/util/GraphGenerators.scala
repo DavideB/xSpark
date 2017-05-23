@@ -57,10 +57,8 @@ object GraphGenerators extends Logging {
       sc: SparkContext, numVertices: Int, numEParts: Int = 0, mu: Double = 4.0,
       sigma: Double = 1.3, seed: Long = -1): Graph[Long, Int] = {
 
-    logInfo("[GRAPH CREATION] V: %d MU: %d".format(numVertices, mu))
-    
     val evalNumEParts = if (numEParts == 0) sc.defaultParallelism else numEParts
-    
+
     // Enable deterministic seeding
     val seedRand = if (seed == -1) new Random() else new Random(seed)
     val seed1 = seedRand.nextInt()
@@ -121,7 +119,7 @@ object GraphGenerators extends Logging {
    * A random graph generator using the R-MAT model, proposed in
    * "R-MAT: A Recursive Model for Graph Mining" by Chakrabarti et al.
    *
-   * See http://www.cs.cmu.edu/~christos/PUBLICATIONS/siam04.pdf.
+   * See [[http://www.cs.cmu.edu/~christos/PUBLICATIONS/siam04.pdf]].
    */
   def rmatGraph(sc: SparkContext, requestedNumVertices: Int, numEdges: Int): Graph[Int, Int] = {
     // let N = requestedNumVertices

@@ -84,9 +84,8 @@ trait PredicateHelper {
    *
    * For example consider a join between two relations R(a, b) and S(c, d).
    *
-   * - `canEvaluate(EqualTo(a,b), R)` returns `true`
-   * - `canEvaluate(EqualTo(a,c), R)` returns `false`
-   * - `canEvaluate(Literal(1), R)` returns `true` as literals CAN be evaluated on any plan
+   * `canEvaluate(EqualTo(a,b), R)` returns `true` where as `canEvaluate(EqualTo(a,c), R)` returns
+   * `false`.
    */
   protected def canEvaluate(expr: Expression, plan: LogicalPlan): Boolean =
     expr.references.subsetOf(plan.outputSet)
@@ -394,13 +393,13 @@ abstract class BinaryComparison extends BinaryOperator with Predicate {
 }
 
 
-object BinaryComparison {
+private[sql] object BinaryComparison {
   def unapply(e: BinaryComparison): Option[(Expression, Expression)] = Some((e.left, e.right))
 }
 
 
 /** An extractor that matches both standard 3VL equality and null-safe equality. */
-object Equality {
+private[sql] object Equality {
   def unapply(e: BinaryComparison): Option[(Expression, Expression)] = e match {
     case EqualTo(l, r) => Some((l, r))
     case EqualNullSafe(l, r) => Some((l, r))

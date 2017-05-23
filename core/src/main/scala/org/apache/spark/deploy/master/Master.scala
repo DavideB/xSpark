@@ -35,7 +35,6 @@ import org.apache.spark.deploy.rest.StandaloneRestServer
 import org.apache.spark.internal.Logging
 import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.rpc._
-import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages.{ScaleExecutor, ExecutorScaled}
 import org.apache.spark.serializer.{JavaSerializer, Serializer}
 import org.apache.spark.util.{ThreadUtils, Utils}
 
@@ -59,7 +58,6 @@ private[deploy] class Master(
   private val RETAINED_DRIVERS = conf.getInt("spark.deploy.retainedDrivers", 200)
   private val REAPER_ITERATIONS = conf.getInt("spark.dead.worker.persistence", 15)
   private val RECOVERY_MODE = conf.get("spark.deploy.recoveryMode", "NONE")
-  private val MAX_EXECUTOR_RETRIES = conf.getInt("spark.deploy.maxExecutorRetries", 10)
 
   val workers = new HashSet[WorkerInfo]
   val idToApp = new HashMap[String, ApplicationInfo]
@@ -253,7 +251,7 @@ private[deploy] class Master(
             appInfo.resetRetryCount()
           }
 
-          exec.application.driver.send(ExecutorUpdated(execId, state, message, exitStatus, false))
+          exec.application.driver.send(ExecutorUpdated(execId, state, message, exitStatus))
 
           if (ExecutorState.isFinished(state)) {
             // Remove this executor from the worker and app
@@ -267,20 +265,19 @@ private[deploy] class Master(
 
             val normalExit = exitStatus == Some(0)
             // Only retry certain number of times so we don't go into an infinite loop.
-            // Important note: this code path is not exercised by tests, so be very careful when
-            // changing this `if` condition.
-            if (!normalExit
-                && appInfo.incrementRetryCount() >= MAX_EXECUTOR_RETRIES
-                && MAX_EXECUTOR_RETRIES >= 0) { // < 0 disables this application-killing path
-              val execs = appInfo.executors.values
-              if (!execs.exists(_.state == ExecutorState.RUNNING)) {
-                logError(s"Application ${appInfo.desc.name} with ID ${appInfo.id} failed " +
-                  s"${appInfo.retryCount} times; removing it")
-                removeApplication(appInfo, ApplicationState.FAILED)
+            if (!normalExit) {
+              if (appInfo.incrementRetryCount() < ApplicationState.MAX_NUM_RETRY) {
+                schedule()
+              } else {
+                val execs = appInfo.executors.values
+                if (!execs.exists(_.state == ExecutorState.RUNNING)) {
+                  logError(s"Application ${appInfo.desc.name} with ID ${appInfo.id} failed " +
+                    s"${appInfo.retryCount} times; removing it")
+                  removeApplication(appInfo, ApplicationState.FAILED)
+                }
               }
             }
           }
-          schedule()
         case None =>
           logWarning(s"Got status update for unknown executor $appId/$execId")
       }
@@ -731,14 +728,6 @@ private[deploy] class Master(
       ExecutorAdded(exec.id, worker.id, worker.hostPort, exec.cores, exec.memory))
   }
 
-  private def scaleExecutor(worker: WorkerInfo, exec: ExecutorDesc): Unit = {
-    logInfo("Scaling executor " + exec.fullId + " on worker " + worker.id)
-    worker.scaleExecutor(exec)
-    worker.endpoint.send(ScaleExecutor(exec.application.id, exec.id.toString, exec.cores.toDouble))
-    exec.application.driver.send(ExecutorScaled(System.currentTimeMillis(),
-      exec.id.toString, exec.cores, exec.cores))
-  }
-
   private def registerWorker(worker: WorkerInfo): Boolean = {
     // There may be one or more refs to dead workers on this same node (w/ different ID's),
     // remove them.
@@ -775,7 +764,7 @@ private[deploy] class Master(
     for (exec <- worker.executors.values) {
       logInfo("Telling app of lost executor: " + exec.id)
       exec.application.driver.send(ExecutorUpdated(
-        exec.id, ExecutorState.LOST, Some("worker lost"), None, workerLost = true))
+        exec.id, ExecutorState.LOST, Some("worker lost"), None))
       exec.state = ExecutorState.LOST
       exec.application.removeExecutor(exec)
     }

@@ -1,31 +1,14 @@
 # Imports from base R
-# Do not include stats:: "rpois", "runif" - causes error at runtime
-importFrom("methods", "setGeneric", "setMethod", "setOldClass")
-importFrom("methods", "is", "new", "signature", "show")
-importFrom("stats", "gaussian", "setNames")
-importFrom("utils", "download.file", "object.size", "packageVersion", "untar")
+importFrom(methods, setGeneric, setMethod, setOldClass)
 
 # Disable native libraries till we figure out how to package it
 # See SPARKR-7839
 #useDynLib(SparkR, stringHashCode)
 
 # S3 methods exported
-export("sparkR.session")
 export("sparkR.init")
 export("sparkR.stop")
-export("sparkR.session.stop")
-export("sparkR.conf")
-export("sparkR.version")
 export("print.jobj")
-
-export("sparkR.newJObject")
-export("sparkR.callJMethod")
-export("sparkR.callJStatic")
-
-export("install.spark")
-
-export("sparkRSQL.init",
-       "sparkRHive.init")
 
 # MLlib integration
 exportMethods("glm",
@@ -79,8 +62,6 @@ exportMethods("arrange",
               "filter",
               "first",
               "freqItems",
-              "gapply",
-              "gapplyCollect",
               "group_by",
               "groupBy",
               "head",
@@ -99,9 +80,7 @@ exportMethods("arrange",
               "orderBy",
               "persist",
               "printSchema",
-              "randomSplit",
               "rbind",
-              "registerTempTable",
               "rename",
               "repartition",
               "sample",
@@ -120,7 +99,6 @@ exportMethods("arrange",
               "summary",
               "take",
               "transform",
-              "union",
               "unionAll",
               "unique",
               "unpersist",
@@ -131,7 +109,6 @@ exportMethods("arrange",
               "write.df",
               "write.jdbc",
               "write.json",
-              "write.orc",
               "write.parquet",
               "write.text",
               "write.ml")
@@ -233,7 +210,6 @@ exportMethods("%in%",
               "mean",
               "min",
               "minute",
-              "monotonically_increasing_id",
               "month",
               "months_between",
               "n",
@@ -246,7 +222,6 @@ exportMethods("%in%",
               "over",
               "percent_rank",
               "pmod",
-              "posexplode",
               "quarter",
               "rand",
               "randn",
@@ -275,7 +250,6 @@ exportMethods("%in%",
               "skewness",
               "sort_array",
               "soundex",
-              "spark_partition_id",
               "stddev",
               "stddev_pop",
               "stddev_samp",
@@ -309,7 +283,9 @@ exportMethods("%in%",
 
 exportClasses("GroupedData")
 exportMethods("agg")
-exportMethods("pivot")
+
+export("sparkRSQL.init",
+       "sparkRHive.init")
 
 export("as.DataFrame",
        "cacheTable",
@@ -317,14 +293,12 @@ export("as.DataFrame",
        "createDataFrame",
        "createExternalTable",
        "dropTempTable",
-       "dropTempView",
        "jsonFile",
        "loadDF",
        "parquetFile",
        "read.df",
        "read.jdbc",
        "read.json",
-       "read.orc",
        "read.parquet",
        "read.text",
        "spark.lapply",
@@ -352,14 +326,5 @@ export("partitionBy",
        "rowsBetween",
        "rangeBetween")
 
-export("windowPartitionBy",
-       "windowOrderBy")
-
-S3method(print, jobj)
-S3method(print, structField)
-S3method(print, structType)
-S3method(print, summary.GeneralizedLinearRegressionModel)
-S3method(structField, character)
-S3method(structField, jobj)
-S3method(structType, jobj)
-S3method(structType, structField)
+export("window.partitionBy",
+       "window.orderBy")

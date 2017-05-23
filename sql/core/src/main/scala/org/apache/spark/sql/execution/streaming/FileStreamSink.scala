@@ -33,7 +33,6 @@ import org.apache.spark.sql.execution.UnsafeKVExternalSorter
 import org.apache.spark.sql.execution.datasources.{FileFormat, OutputWriter, PartitioningUtils}
 import org.apache.spark.sql.types.{StringType, StructType}
 import org.apache.spark.util.SerializableConfiguration
-import org.apache.spark.util.collection.unsafe.sort.UnsafeExternalSorter
 
 object FileStreamSink {
   // The name of the subdirectory that is used to store metadata about which files are valid.
@@ -56,8 +55,7 @@ class FileStreamSink(
 
   private val basePath = new Path(path)
   private val logPath = new Path(basePath, FileStreamSink.metadataDir)
-  private val fileLog =
-    new FileStreamSinkLog(FileStreamSinkLog.VERSION, sparkSession, logPath.toUri.toString)
+  private val fileLog = new FileStreamSinkLog(sparkSession, logPath.toUri.toString)
   private val hadoopConf = sparkSession.sessionState.newHadoopConf()
   private val fs = basePath.getFileSystem(hadoopConf)
 
@@ -211,9 +209,7 @@ class FileStreamSinkWriter(
       StructType.fromAttributes(writeColumns),
       SparkEnv.get.blockManager,
       SparkEnv.get.serializerManager,
-      TaskContext.get().taskMemoryManager().pageSizeBytes,
-      SparkEnv.get.conf.getLong("spark.shuffle.spill.numElementsForceSpillThreshold",
-        UnsafeExternalSorter.DEFAULT_NUM_ELEMENTS_FOR_SPILL_THRESHOLD))
+      TaskContext.get().taskMemoryManager().pageSizeBytes)
 
     while (iterator.hasNext) {
       val currentRow = iterator.next()

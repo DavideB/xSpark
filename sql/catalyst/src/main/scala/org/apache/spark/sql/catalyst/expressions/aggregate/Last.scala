@@ -40,7 +40,7 @@ case class Last(child: Expression, ignoreNullsExpr: Expression) extends Declarat
       throw new AnalysisException("The second argument of First should be a boolean literal.")
   }
 
-  override def children: Seq[Expression] = child :: ignoreNullsExpr :: Nil
+  override def children: Seq[Expression] = child :: Nil
 
   override def nullable: Boolean = true
 
@@ -51,39 +51,38 @@ case class Last(child: Expression, ignoreNullsExpr: Expression) extends Declarat
   override def dataType: DataType = child.dataType
 
   // Expected input data type.
-  override def inputTypes: Seq[AbstractDataType] = Seq(AnyDataType, BooleanType)
+  override def inputTypes: Seq[AbstractDataType] = Seq(AnyDataType)
 
   private lazy val last = AttributeReference("last", child.dataType)()
 
-  private lazy val valueSet = AttributeReference("valueSet", BooleanType)()
-
-  override lazy val aggBufferAttributes: Seq[AttributeReference] = last :: valueSet :: Nil
+  override lazy val aggBufferAttributes: Seq[AttributeReference] = last :: Nil
 
   override lazy val initialValues: Seq[Literal] = Seq(
-    /* last = */ Literal.create(null, child.dataType),
-    /* valueSet = */ Literal.create(false, BooleanType)
+    /* last = */ Literal.create(null, child.dataType)
   )
 
   override lazy val updateExpressions: Seq[Expression] = {
     if (ignoreNulls) {
       Seq(
-        /* last = */ If(IsNull(child), last, child),
-        /* valueSet = */ Or(valueSet, IsNotNull(child))
+        /* last = */ If(IsNull(child), last, child)
       )
     } else {
       Seq(
-        /* last = */ child,
-        /* valueSet = */ Literal.create(true, BooleanType)
+        /* last = */ child
       )
     }
   }
 
   override lazy val mergeExpressions: Seq[Expression] = {
-    // Prefer the right hand expression if it has been set.
-    Seq(
-      /* last = */ If(valueSet.right, last.right, last.left),
-      /* valueSet = */ Or(valueSet.right, valueSet.left)
-    )
+    if (ignoreNulls) {
+      Seq(
+        /* last = */ If(IsNull(last.right), last.left, last.right)
+      )
+    } else {
+      Seq(
+        /* last = */ last.right
+      )
+    }
   }
 
   override lazy val evaluateExpression: AttributeReference = last

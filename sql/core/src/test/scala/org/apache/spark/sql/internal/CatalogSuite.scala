@@ -174,8 +174,7 @@ class CatalogSuite
   }
 
   test("list functions") {
-    assert(Set("+", "current_database", "window").subsetOf(
-      spark.catalog.listFunctions().collect().map(_.name).toSet))
+    assert(spark.catalog.listFunctions().collect().isEmpty)
     createFunction("my_func1")
     createFunction("my_func2")
     createTempFunction("my_temp_func")
@@ -192,8 +191,7 @@ class CatalogSuite
   }
 
   test("list functions with database") {
-    assert(Set("+", "current_database", "window").subsetOf(
-      spark.catalog.listFunctions().collect().map(_.name).toSet))
+    assert(spark.catalog.listFunctions("default").collect().isEmpty)
     createDatabase("my_db1")
     createDatabase("my_db2")
     createFunction("my_func1", Some("my_db1"))
@@ -232,11 +230,6 @@ class CatalogSuite
   test("list columns") {
     createTable("tab1")
     testListColumns("tab1", dbName = None)
-  }
-
-  test("list columns in temporary table") {
-    createTempTable("temp1")
-    spark.catalog.listColumns("temp1")
   }
 
   test("list columns in database") {
@@ -302,17 +295,6 @@ class CatalogSuite
     tableFields.foreach { f => assert(tableString.contains(f.toString)) }
     functionFields.foreach { f => assert(functionString.contains(f.toString)) }
     columnFields.foreach { f => assert(columnString.contains(f.toString)) }
-  }
-
-  test("dropTempView should not un-cache and drop metastore table if a same-name table exists") {
-    withTable("same_name") {
-      spark.range(10).write.saveAsTable("same_name")
-      sql("CACHE TABLE same_name")
-      assert(spark.catalog.isCached("default.same_name"))
-      spark.catalog.dropTempView("same_name")
-      assert(spark.sessionState.catalog.tableExists(TableIdentifier("same_name", Some("default"))))
-      assert(spark.catalog.isCached("default.same_name"))
-    }
   }
 
   // TODO: add tests for the rest of them

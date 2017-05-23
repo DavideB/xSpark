@@ -139,32 +139,14 @@ private[hive] class HiveClientImpl(
         // so we should keep `conf` and reuse the existing instance of `CliSessionState`.
         originalState
       } else {
-        val hiveConf = new HiveConf(classOf[SessionState])
-        // 1: we set all confs in the hadoopConf to this hiveConf.
-        // This hadoopConf contains user settings in Hadoop's core-site.xml file
-        // and Hive's hive-site.xml file. Note, we load hive-site.xml file manually in
-        // SharedState and put settings in this hadoopConf instead of relying on HiveConf
-        // to load user settings. Otherwise, HiveConf's initialize method will override
-        // settings in the hadoopConf. This issue only shows up when spark.sql.hive.metastore.jars
-        // is not set to builtin. When spark.sql.hive.metastore.jars is builtin, the classpath
-        // has hive-site.xml. So, HiveConf will use that to override its default values.
-        hadoopConf.iterator().asScala.foreach { entry =>
-          val key = entry.getKey
-          val value = entry.getValue
-          if (key.toLowerCase.contains("password")) {
-            logDebug(s"Applying Hadoop and Hive config to Hive Conf: $key=xxx")
-          } else {
-            logDebug(s"Applying Hadoop and Hive config to Hive Conf: $key=$value")
-          }
-          hiveConf.set(key, value)
-        }
+        val hiveConf = new HiveConf(hadoopConf, classOf[SessionState])
         // HiveConf is a Hadoop Configuration, which has a field of classLoader and
         // the initial value will be the current thread's context class loader
         // (i.e. initClassLoader at here).
         // We call initialConf.setClassLoader(initClassLoader) at here to make
         // this action explicit.
         hiveConf.setClassLoader(initClassLoader)
-        // 2: we set all spark confs to this hiveConf.
+        // First, we set all spark confs to this hiveConf.
         sparkConf.getAll.foreach { case (k, v) =>
           if (k.toLowerCase.contains("password")) {
             logDebug(s"Applying Spark config to Hive Conf: $k=xxx")
@@ -173,7 +155,7 @@ private[hive] class HiveClientImpl(
           }
           hiveConf.set(k, v)
         }
-        // 3: we set all entries in config to this hiveConf.
+        // Second, we set all entries in config to this hiveConf.
         extraConfig.foreach { case (k, v) =>
           if (k.toLowerCase.contains("password")) {
             logDebug(s"Applying extra config to HiveConf: $k=xxx")
@@ -311,7 +293,7 @@ private[hive] class HiveClientImpl(
         database.name,
         database.description,
         database.locationUri,
-        Option(database.properties).map(_.asJava).orNull),
+        database.properties.asJava),
         ignoreIfExists)
   }
 
@@ -329,7 +311,7 @@ private[hive] class HiveClientImpl(
         database.name,
         database.description,
         database.locationUri,
-        Option(database.properties).map(_.asJava).orNull))
+        database.properties.asJava))
   }
 
   override def getDatabaseOption(name: String): Option[CatalogDatabase] = withHiveState {
@@ -338,7 +320,7 @@ private[hive] class HiveClientImpl(
         name = d.getName,
         description = d.getDescription,
         locationUri = d.getLocationUri,
-        properties = Option(d.getParameters).map(_.asScala.toMap).orNull)
+        properties = d.getParameters.asScala.toMap)
     }
   }
 
@@ -371,16 +353,15 @@ private[hive] class HiveClientImpl(
         unsupportedFeatures += "bucketing"
       }
 
-      val properties = Option(h.getParameters).map(_.asScala.toMap).orNull
+      val properties = h.getParameters.asScala.toMap
 
       CatalogTable(
         identifier = TableIdentifier(h.getTableName, Option(h.getDbName)),
         tableType = h.getTableType match {
           case HiveTableType.EXTERNAL_TABLE => CatalogTableType.EXTERNAL
           case HiveTableType.MANAGED_TABLE => CatalogTableType.MANAGED
+          case HiveTableType.INDEX_TABLE => CatalogTableType.INDEX
           case HiveTableType.VIRTUAL_VIEW => CatalogTableType.VIEW
-          case HiveTableType.INDEX_TABLE =>
-            throw new AnalysisException("Hive index table is not supported.")
         },
         schema = schema,
         partitionColumnNames = partCols.map(_.name),
@@ -409,13 +390,9 @@ private[hive] class HiveClientImpl(
           outputFormat = Option(h.getOutputFormatClass).map(_.getName),
           serde = Option(h.getSerializationLib),
           compressed = h.getTTable.getSd.isCompressed,
-          serdeProperties = Option(h.getTTable.getSd.getSerdeInfo.getParameters)
-            .map(_.asScala.toMap).orNull
+          serdeProperties = h.getTTable.getSd.getSerdeInfo.getParameters.asScala.toMap
         ),
-        // For EXTERNAL_TABLE, the table properties has a particular field "EXTERNAL". This is added
-        // in the function toHiveTable.
-        properties = properties.filter(kv => kv._1 != "comment" && kv._1 != "EXTERNAL"),
-        comment = properties.get("comment"),
+        properties = properties,
         viewOriginalText = Option(h.getViewOriginalText),
         viewText = Option(h.getViewExpandedText),
         unsupportedFeatures = unsupportedFeatures)
@@ -764,6 +741,7 @@ private[hive] class HiveClientImpl(
         HiveTableType.EXTERNAL_TABLE
       case CatalogTableType.MANAGED =>
         HiveTableType.MANAGED_TABLE
+      case CatalogTableType.INDEX => HiveTableType.INDEX_TABLE
       case CatalogTableType.VIEW => HiveTableType.VIRTUAL_VIEW
     })
     // Note: In Hive the schema and partition columns must be disjoint sets
@@ -837,9 +815,6 @@ private[hive] class HiveClientImpl(
         outputFormat = Option(apiPartition.getSd.getOutputFormat),
         serde = Option(apiPartition.getSd.getSerdeInfo.getSerializationLib),
         compressed = apiPartition.getSd.isCompressed,
-        serdeProperties = Option(apiPartition.getSd.getSerdeInfo.getParameters)
-          .map(_.asScala.toMap).orNull),
-        parameters =
-          if (hp.getParameters() != null) hp.getParameters().asScala.toMap else Map.empty)
+        serdeProperties = apiPartition.getSd.getSerdeInfo.getParameters.asScala.toMap))
   }
 }

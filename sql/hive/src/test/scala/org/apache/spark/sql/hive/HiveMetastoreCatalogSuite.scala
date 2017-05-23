@@ -26,15 +26,15 @@ import org.apache.spark.sql.catalyst.parser.CatalystSqlParser
 import org.apache.spark.sql.hive.test.TestHiveSingleton
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.test.{ExamplePointUDT, SQLTestUtils}
-import org.apache.spark.sql.types.{DecimalType, StringType, StructField, StructType}
+import org.apache.spark.sql.types.{DecimalType, StringType, StructType}
 
 class HiveMetastoreCatalogSuite extends TestHiveSingleton {
   import spark.implicits._
 
   test("struct field should accept underscore in sub-column name") {
     val hiveTypeStr = "struct<a: int, b_1: string, c: string>"
-    val dataType = CatalystSqlParser.parseDataType(hiveTypeStr)
-    assert(dataType.isInstanceOf[StructType])
+    val dateType = CatalystSqlParser.parseDataType(hiveTypeStr)
+    assert(dateType.isInstanceOf[StructType])
   }
 
   test("udt to metastore type conversion") {
@@ -48,14 +48,6 @@ class HiveMetastoreCatalogSuite extends TestHiveSingleton {
     val df = spark.sql("SELECT * FROM src")
     logInfo(df.queryExecution.toString)
     df.as('a).join(df.as('b), $"a.key" === $"b.key")
-  }
-
-  test("should not truncate struct type catalog string") {
-    def field(n: Int): StructField = {
-      StructField("col" + n, StringType)
-    }
-    val dataType = StructType((1 to 100).map(field))
-    assert(CatalystSqlParser.parseDataType(dataType.catalogString) == dataType)
   }
 }
 

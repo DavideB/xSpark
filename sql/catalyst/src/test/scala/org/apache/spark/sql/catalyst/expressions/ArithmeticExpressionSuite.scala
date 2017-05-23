@@ -117,13 +117,8 @@ class ArithmeticExpressionSuite extends SparkFunSuite with ExpressionEvalHelper 
     }
   }
 
-  private def testDecimalAndDoubleType(testFunc: (Int => Any) => Unit): Unit = {
-    testFunc(_.toDouble)
-    testFunc(Decimal(_))
-  }
-
   test("/ (Divide) basic") {
-    testDecimalAndDoubleType { convert =>
+    testNumericDataTypes { convert =>
       val left = Literal(convert(2))
       val right = Literal(convert(1))
       val dataType = left.dataType
@@ -133,14 +128,12 @@ class ArithmeticExpressionSuite extends SparkFunSuite with ExpressionEvalHelper 
       checkEvaluation(Divide(left, Literal(convert(0))), null)  // divide by zero
     }
 
-    Seq(DoubleType, DecimalType.SYSTEM_DEFAULT).foreach { tpe =>
+    DataTypeTestUtils.numericTypeWithoutDecimal.foreach { tpe =>
       checkConsistencyBetweenInterpretedAndCodegen(Divide, tpe, tpe)
     }
   }
 
-  // By fixing SPARK-15776, Divide's inputType is required to be DoubleType of DecimalType.
-  // TODO: in future release, we should add a IntegerDivide to support integral types.
-  ignore("/ (Divide) for integral type") {
+  test("/ (Divide) for integral type") {
     checkEvaluation(Divide(Literal(1.toByte), Literal(2.toByte)), 0.toByte)
     checkEvaluation(Divide(Literal(1.toShort), Literal(2.toShort)), 0.toShort)
     checkEvaluation(Divide(Literal(1), Literal(2)), 0)
@@ -148,6 +141,12 @@ class ArithmeticExpressionSuite extends SparkFunSuite with ExpressionEvalHelper 
     checkEvaluation(Divide(positiveShortLit, negativeShortLit), 0.toShort)
     checkEvaluation(Divide(positiveIntLit, negativeIntLit), 0)
     checkEvaluation(Divide(positiveLongLit, negativeLongLit), 0L)
+  }
+
+  test("/ (Divide) for floating point") {
+    checkEvaluation(Divide(Literal(1.0f), Literal(2.0f)), 0.5f)
+    checkEvaluation(Divide(Literal(1.0), Literal(2.0)), 0.5)
+    checkEvaluation(Divide(Literal(Decimal(1.0)), Literal(Decimal(2.0))), Decimal(0.5))
   }
 
   test("% (Remainder)") {
@@ -171,17 +170,6 @@ class ArithmeticExpressionSuite extends SparkFunSuite with ExpressionEvalHelper 
     // DataTypeTestUtils.numericTypeWithoutDecimal.foreach { tpe =>
     //  checkConsistencyBetweenInterpretedAndCodegen(Remainder, tpe, tpe)
     // }
-  }
-
-  test("SPARK-17617: % (Remainder) double % double on super big double") {
-    val leftDouble = Literal(-5083676433652386516D)
-    val rightDouble = Literal(10D)
-    checkEvaluation(Remainder(leftDouble, rightDouble), -6.0D)
-
-    // Float has smaller precision
-    val leftFloat = Literal(-5083676433652386516F)
-    val rightFloat = Literal(10F)
-    checkEvaluation(Remainder(leftFloat, rightFloat), -2.0F)
   }
 
   test("Abs") {

@@ -377,7 +377,6 @@ abstract class UnaryExpression extends Expression {
       """)
     } else {
       ev.copy(code = s"""
-        boolean ${ev.isNull} = false;
         ${childGen.code}
         ${ctx.javaType(dataType)} ${ev.value} = ${ctx.defaultValue(dataType)};
         $resultCode""", isNull = "false")
@@ -476,7 +475,6 @@ abstract class BinaryExpression extends Expression {
       """)
     } else {
       ev.copy(code = s"""
-        boolean ${ev.isNull} = false;
         ${leftGen.code}
         ${rightGen.code}
         ${ctx.javaType(dataType)} ${ev.value} = ${ctx.defaultValue(dataType)};
@@ -511,7 +509,7 @@ abstract class BinaryOperator extends BinaryExpression with ExpectsInputTypes {
 
   override def checkInputDataTypes(): TypeCheckResult = {
     // First check whether left and right have the same type, then check if the type is acceptable.
-    if (!left.dataType.sameType(right.dataType)) {
+    if (left.dataType != right.dataType) {
       TypeCheckResult.TypeCheckFailure(s"differing types in '$sql' " +
         s"(${left.dataType.simpleString} and ${right.dataType.simpleString}).")
     } else if (!inputType.acceptsType(left.dataType)) {
@@ -526,7 +524,7 @@ abstract class BinaryOperator extends BinaryExpression with ExpectsInputTypes {
 }
 
 
-object BinaryOperator {
+private[sql] object BinaryOperator {
   def unapply(e: BinaryOperator): Option[(Expression, Expression)] = Some((e.left, e.right))
 }
 
@@ -619,7 +617,6 @@ abstract class TernaryExpression extends Expression {
         $nullSafeEval""")
     } else {
       ev.copy(code = s"""
-        boolean ${ev.isNull} = false;
         ${leftGen.code}
         ${midGen.code}
         ${rightGen.code}

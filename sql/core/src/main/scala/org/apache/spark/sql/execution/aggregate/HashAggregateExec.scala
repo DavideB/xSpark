@@ -54,7 +54,7 @@ case class HashAggregateExec(
     child.output ++ aggregateBufferAttributes ++ aggregateAttributes ++
       aggregateExpressions.flatMap(_.aggregateFunction.inputAggBufferAttributes)
 
-  override lazy val metrics = Map(
+  override private[sql] lazy val metrics = Map(
     "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"),
     "peakMemory" -> SQLMetrics.createSizeMetric(sparkContext, "peak memory"),
     "spillSize" -> SQLMetrics.createSizeMetric(sparkContext, "spill size"),
@@ -603,6 +603,8 @@ case class HashAggregateExec(
 
     // create grouping key
     ctx.currentVars = input
+    // make sure that the generated code will not be splitted as multiple functions
+    ctx.INPUT_ROW = null
     val unsafeRowKeyCode = GenerateUnsafeProjection.createCode(
       ctx, groupingExpressions.map(e => BindReferences.bindReference[Expression](e, child.output)))
     val vectorizedRowKeys = ctx.generateExpressions(
@@ -772,13 +774,13 @@ case class HashAggregateExec(
 
     testFallbackStartsAt match {
       case None =>
-        val keyString = Utils.truncatedString(groupingExpressions, "[", ", ", "]")
-        val functionString = Utils.truncatedString(allAggregateExpressions, "[", ", ", "]")
-        val outputString = Utils.truncatedString(output, "[", ", ", "]")
+        val keyString = Utils.truncatedString(groupingExpressions, "[", ",", "]")
+        val functionString = Utils.truncatedString(allAggregateExpressions, "[", ",", "]")
+        val outputString = Utils.truncatedString(output, "[", ",", "]")
         if (verbose) {
-          s"HashAggregate(keys=$keyString, functions=$functionString, output=$outputString)"
+          s"HashAggregate(key=$keyString, functions=$functionString, output=$outputString)"
         } else {
-          s"HashAggregate(keys=$keyString, functions=$functionString)"
+          s"HashAggregate(key=$keyString, functions=$functionString)"
         }
       case Some(fallbackStartsAt) =>
         s"HashAggregateWithControlledFallback $groupingExpressions " +

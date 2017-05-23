@@ -422,9 +422,13 @@ public final class OffHeapColumnVector extends ColumnVector {
     array.byteArrayOffset = 0;
   }
 
-  // Split out the slow path.
   @Override
-  protected void reserveInternal(int newCapacity) {
+  public void reserve(int requiredCapacity) {
+    if (requiredCapacity > capacity) reserveInternal(requiredCapacity * 2);
+  }
+
+  // Split out the slow path.
+  private void reserveInternal(int newCapacity) {
     if (this.resultArray != null) {
       this.lengthData =
           Platform.reallocateMemory(lengthData, elementsAppended * 4, newCapacity * 4);

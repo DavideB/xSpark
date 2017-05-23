@@ -50,14 +50,14 @@ abstract class PartitioningAwareFileCatalog(
 
   override def listFiles(filters: Seq[Expression]): Seq[Partition] = {
     val selectedPartitions = if (partitionSpec().partitionColumns.isEmpty) {
-      Partition(InternalRow.empty, allFiles().filter(f => isDataPath(f.getPath))) :: Nil
+      Partition(InternalRow.empty, allFiles().filterNot(_.getPath.getName startsWith "_")) :: Nil
     } else {
       prunePartitions(filters, partitionSpec()).map {
         case PartitionDirectory(values, path) =>
           val files: Seq[FileStatus] = leafDirToChildrenFiles.get(path) match {
             case Some(existingDir) =>
               // Directory has children files in it, return them
-              existingDir.filter(f => isDataPath(f.getPath))
+              existingDir.filterNot(_.getPath.getName.startsWith("_"))
 
             case None =>
               // Directory does not exist, or has no children files
@@ -76,15 +76,7 @@ abstract class PartitioningAwareFileCatalog(
       paths.flatMap { path =>
         // Make the path qualified (consistent with listLeafFiles and listLeafFilesInParallel).
         val fs = path.getFileSystem(hadoopConf)
-        val qualifiedPathPre = fs.makeQualified(path)
-        val qualifiedPath: Path = if (qualifiedPathPre.isRoot && !qualifiedPathPre.isAbsolute) {
-          // SPARK-17613: Always append `Path.SEPARATOR` to the end of parent directories,
-          // because the `leafFile.getParent` would have returned an absolute path with the
-          // separator at the end.
-          new Path(qualifiedPathPre, Path.SEPARATOR)
-        } else {
-          qualifiedPathPre
-        }
+        val qualifiedPath = fs.makeQualified(path)
 
         // There are three cases possible with each path
         // 1. The path is a directory and has children files in it. Then it must be present in
@@ -104,11 +96,7 @@ abstract class PartitioningAwareFileCatalog(
 
   protected def inferPartitioning(): PartitionSpec = {
     // We use leaf dirs containing data files to discover the schema.
-    val leafDirs = leafDirToChildrenFiles.filter { case (_, files) =>
-      // SPARK-15895: Metadata files (e.g. Parquet summary files) and temporary files should not be
-      // counted as data files, so that they shouldn't participate partition discovery.
-      files.exists(f => isDataPath(f.getPath))
-    }.keys.toSeq
+    val leafDirs = leafDirToChildrenFiles.keys.toSeq
     partitionSchema match {
       case Some(userProvidedSchema) if userProvidedSchema.nonEmpty =>
         val spec = PartitioningUtils.parsePartitions(
@@ -208,10 +196,5 @@ abstract class PartitioningAwareFileCatalog(
           val qualifiedPath = path.getFileSystem(hadoopConf).makeQualified(path)
           if (leafFiles.contains(qualifiedPath)) qualifiedPath.getParent else qualifiedPath }.toSet
     }
-  }
-
-  private def isDataPath(path: Path): Boolean = {
-    val name = path.getName
-    !((name.startsWith("_") && !name.contains("=")) || name.startsWith("."))
   }
 }

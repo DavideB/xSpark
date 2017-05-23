@@ -21,7 +21,6 @@ import java.util.concurrent.{ExecutorService, TimeUnit}
 
 import scala.collection.Map
 import scala.collection.mutable
-import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
@@ -175,9 +174,9 @@ class HeartbeatReceiverSuite
     val dummyExecutorEndpointRef1 = rpcEnv.setupEndpoint("fake-executor-1", dummyExecutorEndpoint1)
     val dummyExecutorEndpointRef2 = rpcEnv.setupEndpoint("fake-executor-2", dummyExecutorEndpoint2)
     fakeSchedulerBackend.driverEndpoint.askWithRetry[Boolean](
-      RegisterExecutor(executorId1, dummyExecutorEndpointRef1, "1.2.3.4", 0, Map.empty))
+      RegisterExecutor(executorId1, dummyExecutorEndpointRef1, 0, Map.empty))
     fakeSchedulerBackend.driverEndpoint.askWithRetry[Boolean](
-      RegisterExecutor(executorId2, dummyExecutorEndpointRef2, "1.2.3.5", 0, Map.empty))
+      RegisterExecutor(executorId2, dummyExecutorEndpointRef2, 0, Map.empty))
     heartbeatReceiverRef.askWithRetry[Boolean](TaskSchedulerIsSet)
     addExecutorAndVerify(executorId1)
     addExecutorAndVerify(executorId2)
@@ -271,13 +270,13 @@ private class FakeSchedulerBackend(
     clusterManagerEndpoint: RpcEndpointRef)
   extends CoarseGrainedSchedulerBackend(scheduler, rpcEnv) {
 
-  protected override def doRequestTotalExecutors(requestedTotal: Int): Future[Boolean] = {
-    clusterManagerEndpoint.ask[Boolean](
+  protected override def doRequestTotalExecutors(requestedTotal: Int): Boolean = {
+    clusterManagerEndpoint.askWithRetry[Boolean](
       RequestExecutors(requestedTotal, localityAwareTasks, hostToLocalTaskCount))
   }
 
-  protected override def doKillExecutors(executorIds: Seq[String]): Future[Boolean] = {
-    clusterManagerEndpoint.ask[Boolean](KillExecutors(executorIds))
+  protected override def doKillExecutors(executorIds: Seq[String]): Boolean = {
+    clusterManagerEndpoint.askWithRetry[Boolean](KillExecutors(executorIds))
   }
 }
 

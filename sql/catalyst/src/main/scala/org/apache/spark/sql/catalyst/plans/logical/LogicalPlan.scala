@@ -127,7 +127,7 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
    */
   def resolve(schema: StructType, resolver: Resolver): Seq[Attribute] = {
     schema.map { field =>
-      resolve(field.name :: Nil, resolver).map {
+      resolveQuoted(field.name, resolver).map {
         case a: AttributeReference => a
         case other => sys.error(s"can not handle nested schema yet...  plan $this")
       }.getOrElse {
@@ -265,11 +265,6 @@ abstract class LogicalPlan extends QueryPlan[LogicalPlan] with Logging {
           s"Reference '$name' is ambiguous, could be: $referenceNames.")
     }
   }
-
-  /**
-   * Refreshes (or invalidates) any metadata/data cached in the plan recursively.
-   */
-  def refresh(): Unit = children.foreach(_.refresh())
 }
 
 /**
@@ -293,19 +288,15 @@ abstract class UnaryNode extends LogicalPlan {
    * expressions with the corresponding alias
    */
   protected def getAliasedConstraints(projectList: Seq[NamedExpression]): Set[Expression] = {
-    var allConstraints = child.constraints.asInstanceOf[Set[Expression]]
-    projectList.foreach {
+    projectList.flatMap {
       case a @ Alias(e, _) =>
-        // For every alias in `projectList`, replace the reference in constraints by its attribute.
-        allConstraints ++= allConstraints.map(_ transform {
+        child.constraints.map(_ transform {
           case expr: Expression if expr.semanticEquals(e) =>
             a.toAttribute
-        })
-        allConstraints += EqualNullSafe(e, a.toAttribute)
-      case _ => // Don't change.
-    }
-
-    allConstraints -- child.constraints
+        }).union(Set(EqualNullSafe(e, a.toAttribute)))
+      case _ =>
+        Set.empty[Expression]
+    }.toSet
   }
 
   override protected def validConstraints: Set[Expression] = child.constraints

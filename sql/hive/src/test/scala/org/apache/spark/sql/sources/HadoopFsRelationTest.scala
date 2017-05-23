@@ -92,7 +92,7 @@ abstract class HadoopFsRelationTest extends QueryTest with SQLTestUtils with Tes
 
     // Self-join
     df.createOrReplaceTempView("t")
-    withTempView("t") {
+    withTempTable("t") {
       checkAnswer(
         sql(
           """SELECT l.a, r.b, l.p1, r.p2
@@ -337,8 +337,9 @@ abstract class HadoopFsRelationTest extends QueryTest with SQLTestUtils with Tes
   }
 
   test("saveAsTable()/load() - non-partitioned table - ErrorIfExists") {
-    withTable("t") {
-      sql("CREATE TABLE t(i INT) USING parquet")
+    Seq.empty[(Int, String)].toDF().createOrReplaceTempView("t")
+
+    withTempTable("t") {
       intercept[AnalysisException] {
         testDF.write.format(dataSourceName).mode(SaveMode.ErrorIfExists).saveAsTable("t")
       }
@@ -346,8 +347,9 @@ abstract class HadoopFsRelationTest extends QueryTest with SQLTestUtils with Tes
   }
 
   test("saveAsTable()/load() - non-partitioned table - Ignore") {
-    withTable("t") {
-      sql("CREATE TABLE t(i INT) USING parquet")
+    Seq.empty[(Int, String)].toDF().createOrReplaceTempView("t")
+
+    withTempTable("t") {
       testDF.write.format(dataSourceName).mode(SaveMode.Ignore).saveAsTable("t")
       assert(spark.table("t").collect().isEmpty)
     }
@@ -459,7 +461,7 @@ abstract class HadoopFsRelationTest extends QueryTest with SQLTestUtils with Tes
   test("saveAsTable()/load() - partitioned table - ErrorIfExists") {
     Seq.empty[(Int, String)].toDF().createOrReplaceTempView("t")
 
-    withTempView("t") {
+    withTempTable("t") {
       intercept[AnalysisException] {
         partitionedTestDF.write
           .format(dataSourceName)
@@ -474,7 +476,7 @@ abstract class HadoopFsRelationTest extends QueryTest with SQLTestUtils with Tes
   test("saveAsTable()/load() - partitioned table - Ignore") {
     Seq.empty[(Int, String)].toDF().createOrReplaceTempView("t")
 
-    withTempView("t") {
+    withTempTable("t") {
       partitionedTestDF.write
         .format(dataSourceName)
         .mode(SaveMode.Ignore)
@@ -720,7 +722,7 @@ abstract class HadoopFsRelationTest extends QueryTest with SQLTestUtils with Tes
         'p3.cast(FloatType).as('pf1),
         'f)
 
-      withTempView("t") {
+      withTempTable("t") {
         input
           .write
           .format(dataSourceName)

@@ -25,7 +25,7 @@ import com.github.fommil.netlib.F2jBLAS
 import org.apache.hadoop.fs.Path
 import org.json4s.DefaultFormats
 
-import org.apache.spark.annotation.Since
+import org.apache.spark.annotation.{Experimental, Since}
 import org.apache.spark.internal.Logging
 import org.apache.spark.ml._
 import org.apache.spark.ml.evaluation.Evaluator
@@ -55,9 +55,11 @@ private[ml] trait CrossValidatorParams extends ValidatorParams {
 }
 
 /**
+ * :: Experimental ::
  * K-fold cross validation.
  */
 @Since("1.2.0")
+@Experimental
 class CrossValidator @Since("1.2.0") (@Since("1.4.0") override val uid: String)
   extends Estimator[CrossValidatorModel]
   with CrossValidatorParams with MLWritable with Logging {
@@ -188,6 +190,7 @@ object CrossValidator extends MLReadable[CrossValidator] {
 }
 
 /**
+ * :: Experimental ::
  * Model from k-fold cross validation.
  *
  * @param bestModel The best model selected from k-fold cross validation.
@@ -195,6 +198,7 @@ object CrossValidator extends MLReadable[CrossValidator] {
  *                   [[CrossValidator.estimatorParamMaps]], in the corresponding order.
  */
 @Since("1.2.0")
+@Experimental
 class CrossValidatorModel private[ml] (
     @Since("1.4.0") override val uid: String,
     @Since("1.2.0") val bestModel: Model[_],

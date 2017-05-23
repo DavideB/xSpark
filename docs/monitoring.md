@@ -114,17 +114,8 @@ The history server can be configured as follows:
     <td>spark.history.retainedApplications</td>
     <td>50</td>
     <td>
-      The number of applications to retain UI data for in the cache. If this cap is exceeded, then
-      the oldest applications will be removed from the cache. If an application is not in the cache,
-      it will have to be loaded from disk if its accessed from the UI.
-    </td>
-  </tr>
-  <tr>
-    <td>spark.history.ui.maxApplications</td>
-    <td>Int.MaxValue</td>
-    <td>
-      The number of applications to display on the history summary page. Application UIs are still
-      available by accessing their URLs directly even if they are not displayed on the history summary page.
+      The number of application UIs to retain. If this cap is exceeded, then the oldest
+      applications will be removed.
     </td>
   </tr>
   <tr>
@@ -166,7 +157,7 @@ The history server can be configured as follows:
       If enabled, access control checks are made regardless of what the individual application had
       set for <code>spark.ui.acls.enable</code> when the application was run. The application owner
       will always have authorization to view their own application and any users specified via
-      <code>spark.ui.view.acls</code> and groups specified via <code>spark.ui.view.acls.groups</code>
+      <code>spark.ui.view.acls</code> and groups specified via <code>spark.ui.view.acls.groups<code>
       when the application was run will also have authorization to view that application.
       If disabled, no access control checks are made.
     </td>
@@ -234,10 +225,9 @@ for the history server, they would typically be accessible at `http://<server-ur
 for a running application, at `http://localhost:4040/api/v1`.
 
 In the API, an application is referenced by its application ID, `[app-id]`.
-When running on YARN, each application may have multiple attempts, but there are attempt IDs
-only for applications in cluster mode, not applications in client mode. Applications in YARN cluster mode
-can be identified by their `[attempt-id]`. In the API listed below, when running in YARN cluster mode,
-`[app-id]` will actually be `[base-app-id]/[attempt-id]`, where `[base-app-id]` is the YARN application ID.
+When running on YARN, each application may have multiple attempts; each identified by their `[attempt-id]`.
+In the API listed below, `[app-id]` will actually be `[base-app-id]/[attempt-id]`,
+where `[base-app-id]` is the YARN application ID.
 
 <table class="table">
   <tr><th>Endpoint</th><th>Meaning</th></tr>
@@ -251,8 +241,7 @@ can be identified by their `[attempt-id]`. In the API listed below, when running
     <br>Examples:
     <br><code>?minDate=2015-02-10</code>
     <br><code>?minDate=2015-02-03T16:42:40.000GMT</code>
-    <br><code>?maxDate=[date]</code> latest date/time to list; uses same format as <code>minDate</code>.
-    <br><code>?limit=[limit]</code> limits the number of applications listed.</td>
+    <br><code>?maxDate=[date]</code> latest date/time to list; uses same format as <code>minDate</code>.</td>
   </tr>
   <tr>
     <td><code>/applications/[app-id]/jobs</code></td>

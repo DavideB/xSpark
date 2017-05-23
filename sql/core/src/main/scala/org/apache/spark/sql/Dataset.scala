@@ -30,7 +30,7 @@ import org.apache.commons.lang3.StringUtils
 import org.apache.spark.annotation.{DeveloperApi, Experimental}
 import org.apache.spark.api.java.JavaRDD
 import org.apache.spark.api.java.function._
-import org.apache.spark.api.python.{PythonRDD, SerDeUtil}
+import org.apache.spark.api.python.PythonRDD
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst._
@@ -49,7 +49,7 @@ import org.apache.spark.sql.execution.command.{CreateViewCommand, ExplainCommand
 import org.apache.spark.sql.execution.datasources.{CreateTableUsingAsSelect, LogicalRelation}
 import org.apache.spark.sql.execution.datasources.json.JacksonGenerator
 import org.apache.spark.sql.execution.python.EvaluatePython
-import org.apache.spark.sql.streaming.{DataStreamWriter, StreamingQuery}
+import org.apache.spark.sql.streaming.ContinuousQuery
 import org.apache.spark.sql.types._
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.Utils
@@ -179,7 +179,7 @@ class Dataset[T] private[sql](
       case _ => false
     }
 
-    queryExecution.analyzed match {
+    queryExecution.logical match {
       // For various commands (like DDL) and queries with side effects, we force query execution
       // to happen right away to let these side effects take place eagerly.
       case p if hasSideEffects(p) =>
@@ -455,8 +455,8 @@ class Dataset[T] private[sql](
   /**
    * Returns true if this Dataset contains one or more sources that continuously
    * return data as it arrives. A Dataset that reads data from a streaming source
-   * must be executed as a [[StreamingQuery]] using the `start()` method in
-   * [[DataStreamWriter]]. Methods that return a single answer, e.g. `count()` or
+   * must be executed as a [[ContinuousQuery]] using the `startStream()` method in
+   * [[DataFrameWriter]]. Methods that return a single answer, e.g. `count()` or
    * `collect()`, will throw an [[AnalysisException]] when there is a streaming
    * source present.
    *
@@ -1456,7 +1456,7 @@ class Dataset[T] private[sql](
    * @group typedrel
    * @since 2.0.0
    */
-  def union(other: Dataset[T]): Dataset[T] = withSetOperator {
+  def union(other: Dataset[T]): Dataset[T] = withTypedPlan {
     // This breaks caching, but it's usually ok because it addresses a very specific use case:
     // using union to union many files or partitions.
     CombineUnions(Union(logicalPlan, other.logicalPlan))
@@ -1472,7 +1472,7 @@ class Dataset[T] private[sql](
    * @group typedrel
    * @since 1.6.0
    */
-  def intersect(other: Dataset[T]): Dataset[T] = withSetOperator {
+  def intersect(other: Dataset[T]): Dataset[T] = withTypedPlan {
     Intersect(logicalPlan, other.logicalPlan)
   }
 
@@ -1486,7 +1486,7 @@ class Dataset[T] private[sql](
    * @group typedrel
    * @since 2.0.0
    */
-  def except(other: Dataset[T]): Dataset[T] = withSetOperator {
+  def except(other: Dataset[T]): Dataset[T] = withTypedPlan {
     Except(logicalPlan, other.logicalPlan)
   }
 
@@ -1500,13 +1500,8 @@ class Dataset[T] private[sql](
    * @group typedrel
    * @since 1.6.0
    */
-  def sample(withReplacement: Boolean, fraction: Double, seed: Long): Dataset[T] = {
-    require(fraction >= 0,
-      s"Fraction must be nonnegative, but got ${fraction}")
-
-    withTypedPlan {
-      Sample(0.0, fraction, withReplacement, seed, logicalPlan)()
-    }
+  def sample(withReplacement: Boolean, fraction: Double, seed: Long): Dataset[T] = withTypedPlan {
+    Sample(0.0, fraction, withReplacement, seed, logicalPlan)()
   }
 
   /**
@@ -1534,11 +1529,6 @@ class Dataset[T] private[sql](
    * @since 2.0.0
    */
   def randomSplit(weights: Array[Double], seed: Long): Array[Dataset[T]] = {
-    require(weights.forall(_ >= 0),
-      s"Weights must be nonnegative, but got ${weights.mkString("[", ",", "]")}")
-    require(weights.sum > 0,
-      s"Sum of weights must be positive, but got ${weights.mkString("[", ",", "]")}")
-
     // It is possible that the underlying dataframe doesn't guarantee the ordering of rows in its
     // constituent partitions each time a split is materialized which could result in
     // overlapping splits. To prevent this, we explicitly sort each input partition to make the
@@ -1822,13 +1812,7 @@ class Dataset[T] private[sql](
    * @since 2.0.0
    */
   def dropDuplicates(colNames: Seq[String]): Dataset[T] = withTypedPlan {
-    val resolver = sparkSession.sessionState.analyzer.resolver
-    val allColumns = queryExecution.analyzed.output
-    val groupCols = colNames.map { colName =>
-      allColumns.find(col => resolver(col.name, colName)).getOrElse(
-        throw new AnalysisException(
-          s"""Cannot resolve column name "$colName" among (${schema.fieldNames.mkString(", ")})"""))
-    }
+    val groupCols = colNames.map(resolve)
     val groupColExprIds = groupCols.map(_.exprId)
     val aggCols = logicalPlan.output.map { attr =>
       if (groupColExprIds.contains(attr.exprId)) {
@@ -1918,8 +1902,7 @@ class Dataset[T] private[sql](
     // All columns are string type
     val schema = StructType(
       StructField("summary", StringType) :: outputCols.map(StructField(_, StringType))).toAttributes
-    // `toArray` forces materialization to make the seq serializable
-    LocalRelation.fromExternalRows(schema, ret.toArray.toSeq)
+    LocalRelation.fromExternalRows(schema, ret)
   }
 
   /**
@@ -2333,7 +2316,7 @@ class Dataset[T] private[sql](
    * @since 1.6.0
    */
   def unpersist(blocking: Boolean): this.type = {
-    sparkSession.sharedState.cacheManager.uncacheQuery(this, blocking)
+    sparkSession.sharedState.cacheManager.tryUncacheQuery(this, blocking)
     this
   }
 
@@ -2360,14 +2343,14 @@ class Dataset[T] private[sql](
   }
 
   /**
-   * Returns the content of the Dataset as a [[JavaRDD]] of [[T]]s.
+   * Returns the content of the Dataset as a [[JavaRDD]] of [[Row]]s.
    * @group basic
    * @since 1.6.0
    */
   def toJavaRDD: JavaRDD[T] = rdd.toJavaRDD()
 
   /**
-   * Returns the content of the Dataset as a [[JavaRDD]] of [[T]]s.
+   * Returns the content of the Dataset as a [[JavaRDD]] of [[Row]]s.
    * @group basic
    * @since 1.6.0
    */
@@ -2424,36 +2407,13 @@ class Dataset[T] private[sql](
 
   /**
    * :: Experimental ::
-   * Interface for saving the content of the non-streaming Dataset out into external storage.
+   * Interface for saving the content of the Dataset out into external storage or streams.
    *
    * @group basic
    * @since 1.6.0
    */
   @Experimental
-  def write: DataFrameWriter[T] = {
-    if (isStreaming) {
-      logicalPlan.failAnalysis(
-        "'write' can not be called on streaming Dataset/DataFrame")
-    }
-    new DataFrameWriter[T](this)
-  }
-
-  /**
-   * :: Experimental ::
-   * Interface for saving the content of the streaming Dataset out into external storage.
-   *
-   * @group basic
-   * @since 2.0.0
-   */
-  @Experimental
-  def writeStream: DataStreamWriter[T] = {
-    if (!isStreaming) {
-      logicalPlan.failAnalysis(
-        "'writeStream' can be called only on streaming Dataset/DataFrame")
-    }
-    new DataStreamWriter[T](this)
-  }
-
+  def write: DataFrameWriter[T] = new DataFrameWriter[T](this)
 
   /**
    * Returns the content of the Dataset as a Dataset of JSON strings.
@@ -2519,12 +2479,8 @@ class Dataset[T] private[sql](
   }
 
   private[sql] def collectToPython(): Int = {
-    EvaluatePython.registerPicklers()
     withNewExecutionId {
-      val toJava: (Any) => Any = EvaluatePython.toJava(_, schema)
-      val iter = new SerDeUtil.AutoBatchedPickler(
-        queryExecution.executedPlan.executeCollect().iterator.map(toJava))
-      PythonRDD.serveIterator(iter, "serve-DataFrame")
+      PythonRDD.collectAndServe(javaToPython.rdd)
     }
   }
 
@@ -2606,15 +2562,5 @@ class Dataset[T] private[sql](
   /** A convenient function to wrap a logical plan and produce a Dataset. */
   @inline private def withTypedPlan[U : Encoder](logicalPlan: => LogicalPlan): Dataset[U] = {
     Dataset(sparkSession, logicalPlan)
-  }
-
-  /** A convenient function to wrap a set based logical plan and produce a Dataset. */
-  @inline private def withSetOperator[U : Encoder](logicalPlan: => LogicalPlan): Dataset[U] = {
-    if (classTag.runtimeClass.isAssignableFrom(classOf[Row])) {
-      // Set operators widen types (change the schema), so we cannot reuse the row encoder.
-      Dataset.ofRows(sparkSession, logicalPlan).asInstanceOf[Dataset[U]]
-    } else {
-      Dataset(sparkSession, logicalPlan)
-    }
   }
 }

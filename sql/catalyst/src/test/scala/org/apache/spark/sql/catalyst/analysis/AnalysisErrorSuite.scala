@@ -23,7 +23,7 @@ import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.catalyst.dsl.expressions._
 import org.apache.spark.sql.catalyst.dsl.plans._
 import org.apache.spark.sql.catalyst.expressions._
-import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Complete, Count, Max}
+import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Complete, Count}
 import org.apache.spark.sql.catalyst.plans.{Inner, LeftOuter, RightOuter}
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, GenericArrayData, MapData}
@@ -161,16 +161,6 @@ class AnalysisErrorSuite extends AnalysisTest {
           SortOrder(UnresolvedAttribute("b"), Ascending) :: Nil,
           UnspecifiedFrame)).as('window)),
     "Distinct window functions are not supported" :: Nil)
-
-  errorTest(
-    "nested aggregate functions",
-    testRelation.groupBy('a)(
-      AggregateExpression(
-        Max(AggregateExpression(Count(Literal(1)), Complete, isDistinct = false)),
-        Complete,
-        isDistinct = false)),
-    "not allowed to use an aggregate function in the argument of another aggregate function." :: Nil
-  )
 
   errorTest(
     "offset window function",
@@ -353,12 +343,6 @@ class AnalysisErrorSuite extends AnalysisTest {
   )
 
   errorTest(
-    "num_rows in limit clause must be equal to or greater than 0",
-    listRelation.limit(-1),
-    "The limit expression must be equal to or greater than 0, but got -1" :: Nil
-  )
-
-  errorTest(
     "more than one generators in SELECT",
     listRelation.select(Explode('list), Explode('list)),
     "Only one generator allowed per select clause but found 2: explode(list), explode(list)" :: Nil
@@ -533,22 +517,5 @@ class AnalysisErrorSuite extends AnalysisTest {
       Exists(Union(LocalRelation(b), Filter(EqualTo(OuterReference(a), c), LocalRelation(c)))),
       LocalRelation(a))
     assertAnalysisError(plan3, "Accessing outer query column is not allowed in" :: Nil)
-
-    val plan4 = Filter(
-      Exists(
-        Limit(1,
-          Filter(EqualTo(OuterReference(a), b), LocalRelation(b)))
-      ),
-      LocalRelation(a))
-    assertAnalysisError(plan4, "Accessing outer query column is not allowed in a LIMIT" :: Nil)
-
-    val plan5 = Filter(
-      Exists(
-        Sample(0.0, 0.5, false, 1L,
-          Filter(EqualTo(OuterReference(a), b), LocalRelation(b)))().select('b)
-      ),
-      LocalRelation(a))
-    assertAnalysisError(plan5,
-                        "Accessing outer query column is not allowed in a TABLESAMPLE" :: Nil)
   }
 }

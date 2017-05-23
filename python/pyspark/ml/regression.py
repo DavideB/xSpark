@@ -41,6 +41,8 @@ class LinearRegression(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPrediction
                        HasRegParam, HasTol, HasElasticNetParam, HasFitIntercept,
                        HasStandardization, HasSolver, HasWeightCol, JavaMLWritable, JavaMLReadable):
     """
+    .. note:: Experimental
+
     Linear regression.
 
     The learning objective is to minimize the squared error, with regularization.
@@ -128,13 +130,15 @@ class LinearRegression(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPrediction
 
 class LinearRegressionModel(JavaModel, JavaMLWritable, JavaMLReadable):
     """
+    .. note:: Experimental
+
     Model fitted by :class:`LinearRegression`.
 
     .. versionadded:: 1.4.0
     """
 
     @property
-    @since("2.0.0")
+    @since("1.6.0")
     def coefficients(self):
         """
         Model coefficients.
@@ -407,6 +411,8 @@ class LinearRegressionTrainingSummary(LinearRegressionSummary):
 class IsotonicRegression(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredictionCol,
                          HasWeightCol, JavaMLWritable, JavaMLReadable):
     """
+    .. note:: Experimental
+
     Currently implemented using parallelized pool adjacent violators algorithm.
     Only univariate (single feature) algorithm supported.
 
@@ -433,8 +439,6 @@ class IsotonicRegression(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredicti
     True
     >>> model.predictions == model2.predictions
     True
-
-    .. versionadded:: 1.6.0
     """
 
     isotonic = \
@@ -501,13 +505,12 @@ class IsotonicRegression(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredicti
 
 class IsotonicRegressionModel(JavaModel, JavaMLWritable, JavaMLReadable):
     """
-    Model fitted by :class:`IsotonicRegression`.
+    .. note:: Experimental
 
-    .. versionadded:: 1.6.0
+    Model fitted by :class:`IsotonicRegression`.
     """
 
     @property
-    @since("1.6.0")
     def boundaries(self):
         """
         Boundaries in increasing order for which predictions are known.
@@ -515,7 +518,6 @@ class IsotonicRegressionModel(JavaModel, JavaMLWritable, JavaMLReadable):
         return self._call_java("boundaries")
 
     @property
-    @since("1.6.0")
     def predictions(self):
         """
         Predictions associated with the boundaries at the same index, monotone because of isotonic
@@ -638,6 +640,8 @@ class DecisionTreeRegressor(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredi
                             DecisionTreeParams, TreeRegressorParams, HasCheckpointInterval,
                             HasSeed, JavaMLWritable, JavaMLReadable, HasVarianceCol):
     """
+    .. note:: Experimental
+
     `Decision tree <http://en.wikipedia.org/wiki/Decision_tree_learning>`_
     learning algorithm for regression.
     It supports both continuous and categorical features.
@@ -721,6 +725,8 @@ class DecisionTreeRegressor(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredi
 @inherit_doc
 class DecisionTreeModel(JavaModel):
     """
+    .. note:: Experimental
+
     Abstraction for Decision Tree models.
 
     .. versionadded:: 1.5.0
@@ -751,9 +757,11 @@ class DecisionTreeModel(JavaModel):
 @inherit_doc
 class TreeEnsembleModels(JavaModel):
     """
-    (private abstraction)
+    .. note:: Experimental
 
     Represents a tree ensemble model.
+
+    .. versionadded:: 1.5.0
     """
 
     @property
@@ -793,6 +801,8 @@ class TreeEnsembleModels(JavaModel):
 @inherit_doc
 class DecisionTreeRegressionModel(DecisionTreeModel, JavaMLWritable, JavaMLReadable):
     """
+    .. note:: Experimental
+
     Model fitted by :class:`DecisionTreeRegressor`.
 
     .. versionadded:: 1.4.0
@@ -825,6 +835,8 @@ class RandomForestRegressor(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredi
                             RandomForestParams, TreeRegressorParams, HasCheckpointInterval,
                             JavaMLWritable, JavaMLReadable):
     """
+    .. note:: Experimental
+
     `Random Forest <http://en.wikipedia.org/wiki/Random_forest>`_
     learning algorithm for regression.
     It supports both continuous and categorical features.
@@ -882,7 +894,7 @@ class RandomForestRegressor(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredi
             "org.apache.spark.ml.regression.RandomForestRegressor", self.uid)
         self._setDefault(maxDepth=5, maxBins=32, minInstancesPerNode=1, minInfoGain=0.0,
                          maxMemoryInMB=256, cacheNodeIds=False, checkpointInterval=10,
-                         impurity="variance", subsamplingRate=1.0, numTrees=20,
+                         impurity="variance", subsamplingRate=1.0, seed=None, numTrees=20,
                          featureSubsetStrategy="auto")
         kwargs = self.__init__._input_kwargs
         self.setParams(**kwargs)
@@ -911,6 +923,8 @@ class RandomForestRegressor(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredi
 
 class RandomForestRegressionModel(TreeEnsembleModels, JavaMLWritable, JavaMLReadable):
     """
+    .. note:: Experimental
+
     Model fitted by :class:`RandomForestRegressor`.
 
     .. versionadded:: 1.4.0
@@ -943,6 +957,8 @@ class GBTRegressor(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredictionCol,
                    GBTParams, HasCheckpointInterval, HasStepSize, HasSeed, JavaMLWritable,
                    JavaMLReadable, TreeRegressorParams):
     """
+    .. note:: Experimental
+
     `Gradient-Boosted Trees (GBTs) <http://en.wikipedia.org/wiki/Gradient_boosting>`_
     learning algorithm for regression.
     It supports both continuous and categorical features.
@@ -978,8 +994,6 @@ class GBTRegressor(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredictionCol,
     True
     >>> model.treeWeights == model2.treeWeights
     True
-    >>> model.trees
-    [DecisionTreeRegressionModel (uid=...) of depth..., DecisionTreeRegressionModel...]
 
     .. versionadded:: 1.4.0
     """
@@ -1007,7 +1021,7 @@ class GBTRegressor(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredictionCol,
         self._setDefault(maxDepth=5, maxBins=32, minInstancesPerNode=1, minInfoGain=0.0,
                          maxMemoryInMB=256, cacheNodeIds=False, subsamplingRate=1.0,
                          checkpointInterval=10, lossType="squared", maxIter=20, stepSize=0.1,
-                         impurity="variance")
+                         seed=None, impurity="variance")
         kwargs = self.__init__._input_kwargs
         self.setParams(**kwargs)
 
@@ -1049,6 +1063,8 @@ class GBTRegressor(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredictionCol,
 
 class GBTRegressionModel(TreeEnsembleModels, JavaMLWritable, JavaMLReadable):
     """
+    .. note:: Experimental
+
     Model fitted by :class:`GBTRegressor`.
 
     .. versionadded:: 1.4.0
@@ -1230,7 +1246,7 @@ class AFTSurvivalRegressionModel(JavaModel, JavaMLWritable, JavaMLReadable):
     """
 
     @property
-    @since("2.0.0")
+    @since("1.6.0")
     def coefficients(self):
         """
         Model coefficients.
@@ -1253,14 +1269,12 @@ class AFTSurvivalRegressionModel(JavaModel, JavaMLWritable, JavaMLReadable):
         """
         return self._call_java("scale")
 
-    @since("2.0.0")
     def predictQuantiles(self, features):
         """
         Predicted Quantiles
         """
         return self._call_java("predictQuantiles", features)
 
-    @since("2.0.0")
     def predict(self, features):
         """
         Predicted value

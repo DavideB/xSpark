@@ -23,9 +23,8 @@ import scala.collection.mutable
 
 import org.scalatest.BeforeAndAfter
 
-import org.apache.spark.SparkException
 import org.apache.spark.sql.ForeachWriter
-import org.apache.spark.sql.streaming.{OutputMode, StreamingQueryException, StreamTest}
+import org.apache.spark.sql.streaming.StreamTest
 import org.apache.spark.sql.test.SharedSQLContext
 
 class ForeachSinkSuite extends StreamTest with SharedSQLContext with BeforeAndAfter {
@@ -36,137 +35,60 @@ class ForeachSinkSuite extends StreamTest with SharedSQLContext with BeforeAndAf
     sqlContext.streams.active.foreach(_.stop())
   }
 
-  test("foreach() with `append` output mode") {
+  test("foreach") {
     withTempDir { checkpointDir =>
       val input = MemoryStream[Int]
-      val query = input.toDS().repartition(2).writeStream
+      val query = input.toDS().repartition(2).write
         .option("checkpointLocation", checkpointDir.getCanonicalPath)
-        .outputMode(OutputMode.Append)
         .foreach(new TestForeachWriter())
-        .start()
-
-      // -- batch 0 ---------------------------------------
       input.addData(1, 2, 3, 4)
       query.processAllAvailable()
 
-      var expectedEventsForPartition0 = Seq(
+      val expectedEventsForPartition0 = Seq(
         ForeachSinkSuite.Open(partition = 0, version = 0),
         ForeachSinkSuite.Process(value = 1),
         ForeachSinkSuite.Process(value = 3),
         ForeachSinkSuite.Close(None)
       )
-      var expectedEventsForPartition1 = Seq(
+      val expectedEventsForPartition1 = Seq(
         ForeachSinkSuite.Open(partition = 1, version = 0),
         ForeachSinkSuite.Process(value = 2),
         ForeachSinkSuite.Process(value = 4),
         ForeachSinkSuite.Close(None)
       )
 
-      var allEvents = ForeachSinkSuite.allEvents()
+      val allEvents = ForeachSinkSuite.allEvents()
       assert(allEvents.size === 2)
-      assert(allEvents.toSet === Set(expectedEventsForPartition0, expectedEventsForPartition1))
-
-      ForeachSinkSuite.clear()
-
-      // -- batch 1 ---------------------------------------
-      input.addData(5, 6, 7, 8)
-      query.processAllAvailable()
-
-      expectedEventsForPartition0 = Seq(
-        ForeachSinkSuite.Open(partition = 0, version = 1),
-        ForeachSinkSuite.Process(value = 5),
-        ForeachSinkSuite.Process(value = 7),
-        ForeachSinkSuite.Close(None)
-      )
-      expectedEventsForPartition1 = Seq(
-        ForeachSinkSuite.Open(partition = 1, version = 1),
-        ForeachSinkSuite.Process(value = 6),
-        ForeachSinkSuite.Process(value = 8),
-        ForeachSinkSuite.Close(None)
-      )
-
-      allEvents = ForeachSinkSuite.allEvents()
-      assert(allEvents.size === 2)
-      assert(allEvents.toSet === Set(expectedEventsForPartition0, expectedEventsForPartition1))
-
+      assert {
+        allEvents === Seq(expectedEventsForPartition0, expectedEventsForPartition1) ||
+          allEvents === Seq(expectedEventsForPartition1, expectedEventsForPartition0)
+      }
       query.stop()
     }
   }
 
-  test("foreach() with `complete` output mode") {
+  test("foreach with error") {
     withTempDir { checkpointDir =>
       val input = MemoryStream[Int]
-
-      val query = input.toDS()
-        .groupBy().count().as[Long].map(_.toInt)
-        .writeStream
-        .option("checkpointLocation", checkpointDir.getCanonicalPath)
-        .outputMode(OutputMode.Complete)
-        .foreach(new TestForeachWriter())
-        .start()
-
-      // -- batch 0 ---------------------------------------
-      input.addData(1, 2, 3, 4)
-      query.processAllAvailable()
-
-      var allEvents = ForeachSinkSuite.allEvents()
-      assert(allEvents.size === 1)
-      var expectedEvents = Seq(
-        ForeachSinkSuite.Open(partition = 0, version = 0),
-        ForeachSinkSuite.Process(value = 4),
-        ForeachSinkSuite.Close(None)
-      )
-      assert(allEvents === Seq(expectedEvents))
-
-      ForeachSinkSuite.clear()
-
-      // -- batch 1 ---------------------------------------
-      input.addData(5, 6, 7, 8)
-      query.processAllAvailable()
-
-      allEvents = ForeachSinkSuite.allEvents()
-      assert(allEvents.size === 1)
-      expectedEvents = Seq(
-        ForeachSinkSuite.Open(partition = 0, version = 1),
-        ForeachSinkSuite.Process(value = 8),
-        ForeachSinkSuite.Close(None)
-      )
-      assert(allEvents === Seq(expectedEvents))
-
-      query.stop()
-    }
-  }
-
-  testQuietly("foreach with error") {
-    withTempDir { checkpointDir =>
-      val input = MemoryStream[Int]
-      val query = input.toDS().repartition(1).writeStream
+      val query = input.toDS().repartition(1).write
         .option("checkpointLocation", checkpointDir.getCanonicalPath)
         .foreach(new TestForeachWriter() {
           override def process(value: Int): Unit = {
             super.process(value)
             throw new RuntimeException("error")
           }
-        }).start()
+        })
       input.addData(1, 2, 3, 4)
-
-      // Error in `process` should fail the Spark job
-      val e = intercept[StreamingQueryException] {
-        query.processAllAvailable()
-      }
-      assert(e.getCause.isInstanceOf[SparkException])
-      assert(e.getCause.getCause.getMessage === "error")
-      assert(query.isActive === false)
+      query.processAllAvailable()
 
       val allEvents = ForeachSinkSuite.allEvents()
       assert(allEvents.size === 1)
       assert(allEvents(0)(0) === ForeachSinkSuite.Open(partition = 0, version = 0))
-      assert(allEvents(0)(1) === ForeachSinkSuite.Process(value = 1))
-
-      // `close` should be called with the error
+      assert(allEvents(0)(1) ===  ForeachSinkSuite.Process(value = 1))
       val errorEvent = allEvents(0)(2).asInstanceOf[ForeachSinkSuite.Close]
       assert(errorEvent.error.get.isInstanceOf[RuntimeException])
       assert(errorEvent.error.get.getMessage === "error")
+      query.stop()
     }
   }
 }

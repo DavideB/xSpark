@@ -135,11 +135,6 @@ class BlockMatrixSuite extends SparkFunSuite with MLlibTestSparkContext {
     assert(rowMat.numCols() === n)
     assert(rowMat.toBreeze() === gridBasedMat.toBreeze())
 
-    // SPARK-15922: BlockMatrix to IndexedRowMatrix throws an error"
-    val bmat = rowMat.toBlockMatrix
-    val imat = bmat.toIndexedRowMatrix
-    imat.rows.collect
-
     val rows = 1
     val cols = 10
 

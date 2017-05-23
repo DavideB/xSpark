@@ -243,6 +243,11 @@ package object config {
     .toSequence
     .createWithDefault(Nil)
 
+  private[spark] val TOKEN_RENEWAL_INTERVAL = ConfigBuilder("spark.yarn.token.renewal.interval")
+    .internal()
+    .timeConf(TimeUnit.MILLISECONDS)
+    .createOptional
+
   /* Private configs. */
 
   private[spark] val CREDENTIALS_FILE_PATH = ConfigBuilder("spark.yarn.credentials.file")

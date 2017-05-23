@@ -682,7 +682,6 @@ case class TimeAdd(start: Expression, interval: Expression)
   override def right: Expression = interval
 
   override def toString: String = s"$left + $right"
-  override def sql: String = s"${left.sql} + ${right.sql}"
   override def inputTypes: Seq[AbstractDataType] = Seq(TimestampType, CalendarIntervalType)
 
   override def dataType: DataType = TimestampType
@@ -731,17 +730,16 @@ case class FromUTCTimestamp(left: Expression, right: Expression)
          """.stripMargin)
       } else {
         val tzTerm = ctx.freshName("tz")
-        val utcTerm = ctx.freshName("utc")
         val tzClass = classOf[TimeZone].getName
         ctx.addMutableState(tzClass, tzTerm, s"""$tzTerm = $tzClass.getTimeZone("$tz");""")
-        ctx.addMutableState(tzClass, utcTerm, s"""$utcTerm = $tzClass.getTimeZone("UTC");""")
         val eval = left.genCode(ctx)
         ev.copy(code = s"""
            |${eval.code}
            |boolean ${ev.isNull} = ${eval.isNull};
            |long ${ev.value} = 0;
            |if (!${ev.isNull}) {
-           |  ${ev.value} = $dtu.convertTz(${eval.value}, $utcTerm, $tzTerm);
+           |  ${ev.value} = ${eval.value} +
+           |   ${tzTerm}.getOffset(${eval.value} / 1000) * 1000L;
            |}
          """.stripMargin)
       }
@@ -763,7 +761,6 @@ case class TimeSub(start: Expression, interval: Expression)
   override def right: Expression = interval
 
   override def toString: String = s"$left - $right"
-  override def sql: String = s"${left.sql} - ${right.sql}"
   override def inputTypes: Seq[AbstractDataType] = Seq(TimestampType, CalendarIntervalType)
 
   override def dataType: DataType = TimestampType
@@ -872,17 +869,16 @@ case class ToUTCTimestamp(left: Expression, right: Expression)
          """.stripMargin)
       } else {
         val tzTerm = ctx.freshName("tz")
-        val utcTerm = ctx.freshName("utc")
         val tzClass = classOf[TimeZone].getName
         ctx.addMutableState(tzClass, tzTerm, s"""$tzTerm = $tzClass.getTimeZone("$tz");""")
-        ctx.addMutableState(tzClass, utcTerm, s"""$utcTerm = $tzClass.getTimeZone("UTC");""")
         val eval = left.genCode(ctx)
         ev.copy(code = s"""
            |${eval.code}
            |boolean ${ev.isNull} = ${eval.isNull};
            |long ${ev.value} = 0;
            |if (!${ev.isNull}) {
-           |  ${ev.value} = $dtu.convertTz(${eval.value}, $tzTerm, $utcTerm);
+           |  ${ev.value} = ${eval.value} -
+           |   ${tzTerm}.getOffset(${eval.value} / 1000) * 1000L;
            |}
          """.stripMargin)
       }

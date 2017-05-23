@@ -44,7 +44,7 @@ class FakeDAGScheduler(sc: SparkContext, taskScheduler: FakeTaskScheduler)
 
   override def executorAdded(execId: String, host: String) {}
 
-  override def executorLost(execId: String, reason: ExecutorLossReason) {}
+  override def executorLost(execId: String) {}
 
   override def taskSetFailed(
       taskSet: TaskSet,
@@ -787,8 +787,6 @@ class TaskSetManagerSuite extends SparkFunSuite with LocalSparkContext with Logg
     assert(TaskLocation("host1") === HostTaskLocation("host1"))
     assert(TaskLocation("hdfs_cache_host1") === HDFSCacheTaskLocation("host1"))
     assert(TaskLocation("executor_host1_3") === ExecutorCacheTaskLocation("host1", "3"))
-    assert(TaskLocation("executor_some.host1_executor_task_3") ===
-      ExecutorCacheTaskLocation("some.host1", "executor_task_3"))
   }
 
   private def createTaskResult(

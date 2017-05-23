@@ -31,7 +31,10 @@ import org.apache.spark.sql.streaming.OutputMode
 import org.apache.spark.sql.types.IntegerType
 
 /** A dummy command for testing unsupported operations. */
-case class DummyCommand() extends Command
+case class DummyCommand() extends LogicalPlan with Command {
+  override def output: Seq[Attribute] = Nil
+  override def children: Seq[LogicalPlan] = Nil
+}
 
 class UnsupportedOperationsSuite extends SparkFunSuite {
 
@@ -50,12 +53,12 @@ class UnsupportedOperationsSuite extends SparkFunSuite {
   assertNotSupportedInBatchPlan(
     "streaming source",
     streamRelation,
-    Seq("with streaming source", "start"))
+    Seq("with streaming source", "startStream"))
 
   assertNotSupportedInBatchPlan(
     "select on streaming source",
     streamRelation.select($"count(*)"),
-    Seq("with streaming source", "start"))
+    Seq("with streaming source", "startStream"))
 
 
   /*
@@ -67,7 +70,7 @@ class UnsupportedOperationsSuite extends SparkFunSuite {
   // Batch plan in streaming query
   testError(
     "streaming plan - no streaming source",
-    Seq("without streaming source", "start")) {
+    Seq("without streaming source", "startStream")) {
     UnsupportedOperationChecker.checkForStreaming(batchRelation.select($"count(*)"), Append)
   }
 

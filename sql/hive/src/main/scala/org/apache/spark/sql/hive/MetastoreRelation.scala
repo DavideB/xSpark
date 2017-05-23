@@ -61,7 +61,7 @@ private[hive] case class MetastoreRelation(
     Objects.hashCode(databaseName, tableName, alias, output)
   }
 
-  override protected def otherCopyArgs: Seq[AnyRef] = catalogTable :: client :: sparkSession :: Nil
+  override protected def otherCopyArgs: Seq[AnyRef] = catalogTable :: sparkSession :: Nil
 
   private def toHiveColumn(c: CatalogColumn): FieldSchema = {
     new FieldSchema(c.name, c.dataType, c.comment.orNull)
@@ -82,6 +82,7 @@ private[hive] case class MetastoreRelation(
     tTable.setTableType(catalogTable.tableType match {
       case CatalogTableType.EXTERNAL => HiveTableType.EXTERNAL_TABLE.toString
       case CatalogTableType.MANAGED => HiveTableType.MANAGED_TABLE.toString
+      case CatalogTableType.INDEX => HiveTableType.INDEX_TABLE.toString
       case CatalogTableType.VIEW => HiveTableType.VIRTUAL_VIEW.toString
     })
 
@@ -159,17 +160,11 @@ private[hive] case class MetastoreRelation(
       val tPartition = new org.apache.hadoop.hive.metastore.api.Partition
       tPartition.setDbName(databaseName)
       tPartition.setTableName(tableName)
-      tPartition.setValues(partitionKeys.map(a => p.spec(a.name)).asJava)
+      tPartition.setValues(p.spec.values.toList.asJava)
 
       val sd = new org.apache.hadoop.hive.metastore.api.StorageDescriptor()
       tPartition.setSd(sd)
-
-      // Note: In Hive the schema and partition columns must be disjoint sets
-      val schema = catalogTable.schema.map(toHiveColumn).filter { c =>
-        !catalogTable.partitionColumnNames.contains(c.getName)
-      }
-      sd.setCols(schema.asJava)
-
+      sd.setCols(catalogTable.schema.map(toHiveColumn).asJava)
       p.storage.locationUri.foreach(sd.setLocation)
       p.storage.inputFormat.foreach(sd.setInputFormat)
       p.storage.outputFormat.foreach(sd.setOutputFormat)
@@ -190,7 +185,7 @@ private[hive] case class MetastoreRelation(
 
   /** Only compare database and tablename, not alias. */
   override def sameResult(plan: LogicalPlan): Boolean = {
-    plan.canonicalized match {
+    plan match {
       case mr: MetastoreRelation =>
         mr.databaseName == databaseName && mr.tableName == tableName
       case _ => false

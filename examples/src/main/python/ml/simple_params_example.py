@@ -33,7 +33,7 @@ Run with:
 if __name__ == "__main__":
     spark = SparkSession \
         .builder \
-        .appName("SimpleParamsExample") \
+        .appName("SimpleTextClassificationPipeline") \
         .getOrCreate()
 
     # prepare training data.

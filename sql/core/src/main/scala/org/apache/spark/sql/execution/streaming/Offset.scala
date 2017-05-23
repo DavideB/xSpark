@@ -19,8 +19,19 @@ package org.apache.spark.sql.execution.streaming
 
 /**
  * An offset is a monotonically increasing metric used to track progress in the computation of a
- * stream. Since offsets are retrieved from a [[Source]] by a single thread, we know the global
- * ordering of two [[Offset]] instances.  We do assume that if two offsets are `equal` then no
- * new data has arrived.
+ * stream. An [[Offset]] must be comparable, and the result of `compareTo` must be consistent
+ * with `equals` and `hashcode`.
  */
-trait Offset extends Serializable {}
+trait Offset extends Serializable {
+
+  /**
+   * Returns a negative integer, zero, or a positive integer as this object is less than, equal to,
+   * or greater than the specified object.
+   */
+  def compareTo(other: Offset): Int
+
+  def >(other: Offset): Boolean = compareTo(other) > 0
+  def <(other: Offset): Boolean = compareTo(other) < 0
+  def <=(other: Offset): Boolean = compareTo(other) <= 0
+  def >=(other: Offset): Boolean = compareTo(other) >= 0
+}

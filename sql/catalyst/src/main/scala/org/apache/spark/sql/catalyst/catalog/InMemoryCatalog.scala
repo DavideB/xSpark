@@ -59,6 +59,18 @@ class InMemoryCatalog(hadoopConfig: Configuration = new Configuration) extends E
     catalog(db).tables(table).partitions.contains(spec)
   }
 
+  private def requireFunctionExists(db: String, funcName: String): Unit = {
+    if (!functionExists(db, funcName)) {
+      throw new NoSuchFunctionException(db = db, func = funcName)
+    }
+  }
+
+  private def requireFunctionNotExists(db: String, funcName: String): Unit = {
+    if (functionExists(db, funcName)) {
+      throw new FunctionAlreadyExistsException(db = db, func = funcName)
+    }
+  }
+
   private def requireTableExists(db: String, table: String): Unit = {
     if (!tableExists(db, table)) {
       throw new NoSuchTableException(db = db, table = table)
@@ -166,7 +178,7 @@ class InMemoryCatalog(hadoopConfig: Configuration = new Configuration) extends E
   }
 
   override def listDatabases(): Seq[String] = synchronized {
-    catalog.keySet.toSeq.sorted
+    catalog.keySet.toSeq
   }
 
   override def listDatabases(pattern: String): Seq[String] = synchronized {
@@ -274,7 +286,7 @@ class InMemoryCatalog(hadoopConfig: Configuration = new Configuration) extends E
 
   override def listTables(db: String): Seq[String] = synchronized {
     requireDbExists(db)
-    catalog(db).tables.keySet.toSeq.sorted
+    catalog(db).tables.keySet.toSeq
   }
 
   override def listTables(db: String, pattern: String): Seq[String] = synchronized {
@@ -453,8 +465,11 @@ class InMemoryCatalog(hadoopConfig: Configuration = new Configuration) extends E
 
   override def createFunction(db: String, func: CatalogFunction): Unit = synchronized {
     requireDbExists(db)
-    requireFunctionNotExists(db, func.identifier.funcName)
-    catalog(db).functions.put(func.identifier.funcName, func)
+    if (functionExists(db, func.identifier.funcName)) {
+      throw new FunctionAlreadyExistsException(db = db, func = func.identifier.funcName)
+    } else {
+      catalog(db).functions.put(func.identifier.funcName, func)
+    }
   }
 
   override def dropFunction(db: String, funcName: String): Unit = synchronized {

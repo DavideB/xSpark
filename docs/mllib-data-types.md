@@ -1,7 +1,7 @@
 ---
 layout: global
-title: Data Types - RDD-based API
-displayTitle: Data Types - RDD-based API
+title: Data Types - MLlib
+displayTitle: Data Types - MLlib
 ---
 
 * Table of contents

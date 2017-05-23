@@ -33,13 +33,13 @@ import org.apache.spark.TaskState.TaskState
 import org.apache.spark.internal.Logging
 import org.apache.spark.scheduler.SchedulingMode.SchedulingMode
 import org.apache.spark.scheduler.TaskLocality.TaskLocality
-import org.apache.spark.scheduler.local.LocalSchedulerBackend
+import org.apache.spark.scheduler.local.LocalSchedulerBackendEndpoint
 import org.apache.spark.storage.BlockManagerId
 import org.apache.spark.util.{AccumulatorV2, ThreadUtils, Utils}
 
 /**
  * Schedules tasks for multiple types of clusters by acting through a SchedulerBackend.
- * It can also work with a local setup by using a [[LocalSchedulerBackend]] and setting
+ * It can also work with a local setup by using a [[LocalSchedulerBackendEndpoint]] and setting
  * isLocal to true. It handles common logic, like determining a scheduling order across jobs, waking
  * up to launch speculative tasks, etc.
  *
@@ -80,9 +80,6 @@ private[spark] class TaskSchedulerImpl(
 
   private[scheduler] val taskIdToTaskSetManager = new HashMap[Long, TaskSetManager]
   val taskIdToExecutorId = new HashMap[Long, String]
-
-  val execIdToTaskSet = new HashMap[String, Long].withDefaultValue(-1)
-  val taskSetToExecId = new HashMap[Long, Set[String]].withDefaultValue(Set())
 
   @volatile private var hasReceivedTask = false
   @volatile private var hasLaunchedTask = false
@@ -255,10 +252,7 @@ private[spark] class TaskSchedulerImpl(
     for (i <- 0 until shuffledOffers.size) {
       val execId = shuffledOffers(i).executorId
       val host = shuffledOffers(i).host
-      val stageId = taskSet.stageId
-      logInfo("CPU FREE: %d, EID %s, SID, %d, ASSIGNED SID %d".format(availableCpus(i),
-        execId, stageId, execIdToTaskSet(execId)))
-      if (availableCpus(i) >= CPUS_PER_TASK && execIdToTaskSet(execId) == stageId) {
+      if (availableCpus(i) >= CPUS_PER_TASK) {
         try {
           for (task <- taskSet.resourceOffer(execId, host, maxLocality)) {
             tasks(i) += task
@@ -338,7 +332,6 @@ private[spark] class TaskSchedulerImpl(
 
   def statusUpdate(tid: Long, state: TaskState, serializedData: ByteBuffer) {
     var failedExecutor: Option[String] = None
-    var reason: Option[ExecutorLossReason] = None
     synchronized {
       try {
         if (state == TaskState.LOST && taskIdToExecutorId.contains(tid)) {
@@ -346,9 +339,8 @@ private[spark] class TaskSchedulerImpl(
           val execId = taskIdToExecutorId(tid)
 
           if (executorIdToTaskCount.contains(execId)) {
-            reason = Some(
+            removeExecutor(execId,
               SlaveLost(s"Task $tid was lost, so marking the executor as lost as well."))
-            removeExecutor(execId, reason.get)
             failedExecutor = Some(execId)
           }
         }
@@ -381,8 +373,7 @@ private[spark] class TaskSchedulerImpl(
     }
     // Update the DAGScheduler without holding a lock on this, since that can deadlock
     if (failedExecutor.isDefined) {
-      assert(reason.isDefined)
-      dagScheduler.executorLost(failedExecutor.get, reason.get)
+      dagScheduler.executorLost(failedExecutor.get)
       backend.reviveOffers()
     }
   }
@@ -455,20 +446,6 @@ private[spark] class TaskSchedulerImpl(
     }
   }
 
-  def bind(executorId: String, stageId: Int): Unit = {
-    if (execIdToTaskSet(executorId) == -1) {
-      logInfo("BINDING EXECUTOR ID: %s TO STAGEID %d".format(executorId, stageId))
-      execIdToTaskSet(executorId) = stageId
-    }
-  }
-
-  def unbind(executorId: String, stageId: Int): Unit = {
-    if (execIdToTaskSet(executorId) == stageId) {
-      logInfo("UNBINDING EXECUTOR ID: %s FROM SID: %d".format(executorId, stageId))
-      execIdToTaskSet(executorId) = -1
-    }
-  }
-
   override def stop() {
     speculationScheduler.shutdown()
     if (backend != null) {
@@ -522,7 +499,7 @@ private[spark] class TaskSchedulerImpl(
     }
     // Call dagScheduler.executorLost without holding the lock on this to prevent deadlock
     if (failedExecutor.isDefined) {
-      dagScheduler.executorLost(failedExecutor.get, reason)
+      dagScheduler.executorLost(failedExecutor.get)
       backend.reviveOffers()
     }
   }

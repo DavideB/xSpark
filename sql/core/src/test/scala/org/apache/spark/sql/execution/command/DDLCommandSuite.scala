@@ -28,7 +28,7 @@ import org.apache.spark.sql.catalyst.plans.logical.Project
 import org.apache.spark.sql.execution.SparkSqlParser
 import org.apache.spark.sql.execution.datasources.{BucketSpec, CreateTableUsing}
 import org.apache.spark.sql.internal.{HiveSerDe, SQLConf}
-import org.apache.spark.sql.types.{IntegerType, MetadataBuilder, StringType, StructType}
+import org.apache.spark.sql.types.{IntegerType, StringType, StructType}
 
 
 // TODO: merge this with DDLSuite (SPARK-14441)
@@ -349,14 +349,10 @@ class DDLCommandSuite extends PlanTest {
   }
 
   test("create table using - with partitioned by") {
-    val query = "CREATE TABLE my_tab(a INT comment 'test', b STRING) " +
-      "USING parquet PARTITIONED BY (a)"
+    val query = "CREATE TABLE my_tab(a INT, b STRING) USING parquet PARTITIONED BY (a)"
     val expected = CreateTableUsing(
       TableIdentifier("my_tab"),
-      Some(new StructType()
-        .add("a", IntegerType, nullable = true,
-          new MetadataBuilder().putString("comment", s"test").build())
-        .add("b", StringType)),
+      Some(new StructType().add("a", IntegerType).add("b", StringType)),
       "parquet",
       false,
       Map.empty,
@@ -562,14 +558,6 @@ class DDLCommandSuite extends PlanTest {
 
     comparePlans(parsed1, expected1)
     comparePlans(parsed2, expected2)
-  }
-
-  test("alter table: recover partitions") {
-    val sql = "ALTER TABLE table_name RECOVER PARTITIONS"
-    val parsed = parser.parsePlan(sql)
-    val expected = AlterTableRecoverPartitionsCommand(
-      TableIdentifier("table_name", None))
-    comparePlans(parsed, expected)
   }
 
   test("alter view: add partition (not supported)") {

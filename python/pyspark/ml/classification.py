@@ -21,8 +21,8 @@ import warnings
 from pyspark import since, keyword_only
 from pyspark.ml import Estimator, Model
 from pyspark.ml.param.shared import *
-from pyspark.ml.regression import DecisionTreeModel, DecisionTreeRegressionModel, \
-    RandomForestParams, TreeEnsembleModels, TreeEnsembleParams
+from pyspark.ml.regression import (
+    RandomForestParams, TreeEnsembleParams, DecisionTreeModel, TreeEnsembleModels)
 from pyspark.ml.util import *
 from pyspark.ml.wrapper import JavaEstimator, JavaModel, JavaParams
 from pyspark.ml.wrapper import JavaWrapper
@@ -96,8 +96,7 @@ class LogisticRegression(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredicti
 
     threshold = Param(Params._dummy(), "threshold",
                       "Threshold in binary classification prediction, in range [0, 1]." +
-                      " If threshold and thresholds are both set, they must match." +
-                      "e.g. if threshold is p, then thresholds must be equal to [1-p, p].",
+                      " If threshold and thresholds are both set, they must match.",
                       typeConverter=TypeConverters.toFloat)
 
     @keyword_only
@@ -155,12 +154,7 @@ class LogisticRegression(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredicti
     @since("1.4.0")
     def getThreshold(self):
         """
-        Get threshold for binary classification.
-
-        If :py:attr:`thresholds` is set with length 2 (i.e., binary classification),
-        this returns the equivalent threshold:
-        :math:`\\frac{1}{1 + \\frac{thresholds(0)}{thresholds(1)}}`.
-        Otherwise, returns :py:attr:`threshold` if set or its default value if unset.
+        Gets the value of threshold or its default value.
         """
         self._checkThresholdConsistency()
         if self.isSet(self.thresholds):
@@ -220,7 +214,7 @@ class LogisticRegressionModel(JavaModel, JavaMLWritable, JavaMLReadable):
     """
 
     @property
-    @since("2.0.0")
+    @since("1.6.0")
     def coefficients(self):
         """
         Model coefficients.
@@ -273,8 +267,6 @@ class LogisticRegressionModel(JavaModel, JavaMLWritable, JavaMLReadable):
 
 class LogisticRegressionSummary(JavaWrapper):
     """
-    .. note:: Experimental
-
     Abstraction for Logistic Regression Results for a given model.
 
     .. versionadded:: 2.0.0
@@ -319,8 +311,6 @@ class LogisticRegressionSummary(JavaWrapper):
 @inherit_doc
 class LogisticRegressionTrainingSummary(LogisticRegressionSummary):
     """
-    .. note:: Experimental
-
     Abstraction for multinomial Logistic Regression Training results.
     Currently, the training summary ignores the training weights except
     for the objective trace.
@@ -695,7 +685,7 @@ class RandomForestClassifier(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPred
         self._java_obj = self._new_java_obj(
             "org.apache.spark.ml.classification.RandomForestClassifier", self.uid)
         self._setDefault(maxDepth=5, maxBins=32, minInstancesPerNode=1, minInfoGain=0.0,
-                         maxMemoryInMB=256, cacheNodeIds=False, checkpointInterval=10,
+                         maxMemoryInMB=256, cacheNodeIds=False, checkpointInterval=10, seed=None,
                          impurity="gini", numTrees=20, featureSubsetStrategy="auto")
         kwargs = self.__init__._input_kwargs
         self.setParams(**kwargs)
@@ -808,8 +798,6 @@ class GBTClassifier(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredictionCol
     True
     >>> model.treeWeights == model2.treeWeights
     True
-    >>> model.trees
-    [DecisionTreeRegressionModel (uid=...) of depth..., DecisionTreeRegressionModel...]
 
     .. versionadded:: 1.4.0
     """
@@ -835,7 +823,7 @@ class GBTClassifier(JavaEstimator, HasFeaturesCol, HasLabelCol, HasPredictionCol
             "org.apache.spark.ml.classification.GBTClassifier", self.uid)
         self._setDefault(maxDepth=5, maxBins=32, minInstancesPerNode=1, minInfoGain=0.0,
                          maxMemoryInMB=256, cacheNodeIds=False, checkpointInterval=10,
-                         lossType="logistic", maxIter=20, stepSize=0.1)
+                         lossType="logistic", maxIter=20, stepSize=0.1, seed=None)
         kwargs = self.__init__._input_kwargs
         self.setParams(**kwargs)
 
@@ -1035,7 +1023,7 @@ class NaiveBayesModel(JavaModel, JavaMLWritable, JavaMLReadable):
     """
 
     @property
-    @since("2.0.0")
+    @since("1.5.0")
     def pi(self):
         """
         log of class priors.
@@ -1043,7 +1031,7 @@ class NaiveBayesModel(JavaModel, JavaMLWritable, JavaMLReadable):
         return self._call_java("pi")
 
     @property
-    @since("2.0.0")
+    @since("1.5.0")
     def theta(self):
         """
         log of class conditional probabilities.
@@ -1056,8 +1044,6 @@ class MultilayerPerceptronClassifier(JavaEstimator, HasFeaturesCol, HasLabelCol,
                                      HasMaxIter, HasTol, HasSeed, HasStepSize, JavaMLWritable,
                                      JavaMLReadable):
     """
-    .. note:: Experimental
-
     Classifier trainer based on the Multilayer Perceptron.
     Each layer has sigmoid activation function, output layer has softmax.
     Number of inputs has to be equal to the size of feature vectors.
@@ -1228,8 +1214,6 @@ class MultilayerPerceptronClassifier(JavaEstimator, HasFeaturesCol, HasLabelCol,
 
 class MultilayerPerceptronClassificationModel(JavaModel, JavaMLWritable, JavaMLReadable):
     """
-    .. note:: Experimental
-
     Model fitted by MultilayerPerceptronClassifier.
 
     .. versionadded:: 1.6.0
@@ -1244,7 +1228,7 @@ class MultilayerPerceptronClassificationModel(JavaModel, JavaMLWritable, JavaMLR
         return self._call_java("javaLayers")
 
     @property
-    @since("2.0.0")
+    @since("1.6.0")
     def weights(self):
         """
         vector of initial weights for the model that consists of the weights of layers.
@@ -1279,8 +1263,6 @@ class OneVsRestParams(HasFeaturesCol, HasLabelCol, HasPredictionCol):
 @inherit_doc
 class OneVsRest(Estimator, OneVsRestParams, MLReadable, MLWritable):
     """
-    .. note:: Experimental
-
     Reduction of Multiclass Classification to Binary Classification.
     Performs reduction using one against all strategy.
     For a multiclass classification with k classes, train k models (one per class).
@@ -1435,8 +1417,6 @@ class OneVsRest(Estimator, OneVsRestParams, MLReadable, MLWritable):
 
 class OneVsRestModel(Model, OneVsRestParams, MLReadable, MLWritable):
     """
-    .. note:: Experimental
-
     Model fitted by OneVsRest.
     This stores the models resulting from training k binary classifiers: one for each class.
     Each example is scored against all k models, and the model with the highest score

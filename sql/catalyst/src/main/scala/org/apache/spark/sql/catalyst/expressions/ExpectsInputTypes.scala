@@ -57,8 +57,7 @@ trait ExpectsInputTypes extends Expression {
 
 
 /**
- * A mixin for the analyzer to perform implicit type casting using
- * [[org.apache.spark.sql.catalyst.analysis.TypeCoercion.ImplicitTypeCasts]].
+ * A mixin for the analyzer to perform implicit type casting using [[ImplicitTypeCasts]].
  */
 trait ImplicitCastInputTypes extends ExpectsInputTypes {
   // No other methods

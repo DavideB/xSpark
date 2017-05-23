@@ -19,7 +19,7 @@ package org.apache.spark.sql.sources
 
 import java.io.File
 
-import org.scalatest.BeforeAndAfterEach
+import org.scalatest.BeforeAndAfter
 
 import org.apache.spark.SparkException
 import org.apache.spark.sql.catalyst.TableIdentifier
@@ -29,16 +29,14 @@ import org.apache.spark.sql.execution.datasources.BucketSpec
 import org.apache.spark.sql.test.SharedSQLContext
 import org.apache.spark.util.Utils
 
-class CreateTableAsSelectSuite
-  extends DataSourceTest
-  with SharedSQLContext
-  with BeforeAndAfterEach {
+class CreateTableAsSelectSuite extends DataSourceTest with SharedSQLContext with BeforeAndAfter {
 
   protected override lazy val sql = spark.sql _
   private var path: File = null
 
   override def beforeAll(): Unit = {
     super.beforeAll()
+    path = Utils.createTempDir()
     val rdd = sparkContext.parallelize((1 to 10).map(i => s"""{"a":$i, "b":"str${i}"}"""))
     spark.read.json(rdd).createOrReplaceTempView("jt")
   }
@@ -46,21 +44,18 @@ class CreateTableAsSelectSuite
   override def afterAll(): Unit = {
     try {
       spark.catalog.dropTempView("jt")
-      Utils.deleteRecursively(path)
+      if (path.exists()) {
+        Utils.deleteRecursively(path)
+      }
     } finally {
       super.afterAll()
     }
   }
 
-  override def beforeEach(): Unit = {
-    super.beforeEach()
-    path = Utils.createTempDir()
-    path.delete()
-  }
-
-  override def afterEach(): Unit = {
-    Utils.deleteRecursively(path)
-    super.afterEach()
+  before {
+    if (path.exists()) {
+      Utils.deleteRecursively(path)
+    }
   }
 
   test("CREATE TABLE USING AS SELECT") {
@@ -218,18 +213,6 @@ class CreateTableAsSelectSuite
       val table = catalog.getTableMetadata(TableIdentifier("t"))
       assert(DDLUtils.getBucketSpecFromTableProperties(table) ==
         Some(BucketSpec(5, Seq("a"), Seq("b"))))
-    }
-  }
-
-  test("SPARK-17409: CTAS of decimal calculation") {
-    withTable("tab2") {
-      withTempView("tab1") {
-        spark.range(99, 101).createOrReplaceTempView("tab1")
-        val sqlStmt =
-          "SELECT id, cast(id as long) * cast('1.0' as decimal(38, 18)) as num FROM tab1"
-        sql(s"CREATE TABLE tab2 USING PARQUET AS $sqlStmt")
-        checkAnswer(spark.table("tab2"), sql(sqlStmt))
-      }
     }
   }
 }

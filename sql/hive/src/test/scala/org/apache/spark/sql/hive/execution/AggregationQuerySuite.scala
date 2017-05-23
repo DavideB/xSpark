@@ -923,7 +923,7 @@ abstract class AggregationQuerySuite extends QueryTest with SQLTestUtils with Te
   }
 
   test("udaf without specifying inputSchema") {
-    withTempView("noInputSchemaUDAF") {
+    withTempTable("noInputSchemaUDAF") {
       spark.udf.register("noInputSchema", new ScalaAggregateFunctionWithoutInputSchema)
 
       val data =

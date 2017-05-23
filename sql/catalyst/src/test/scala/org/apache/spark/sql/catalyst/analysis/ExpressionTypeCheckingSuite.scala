@@ -85,7 +85,7 @@ class ExpressionTypeCheckingSuite extends SparkFunSuite {
     assertError(Subtract('booleanField, 'booleanField),
       "requires (numeric or calendarinterval) type")
     assertError(Multiply('booleanField, 'booleanField), "requires numeric type")
-    assertError(Divide('booleanField, 'booleanField), "requires (double or decimal) type")
+    assertError(Divide('booleanField, 'booleanField), "requires numeric type")
     assertError(Remainder('booleanField, 'booleanField), "requires numeric type")
 
     assertError(BitwiseAnd('booleanField, 'booleanField), "requires integral type")
@@ -166,8 +166,6 @@ class ExpressionTypeCheckingSuite extends SparkFunSuite {
     assertError(new Murmur3Hash(Nil), "function hash requires at least one argument")
     assertError(Explode('intField),
       "input to function explode should be array or map type")
-    assertError(PosExplode('intField),
-      "input to function explode should be array or map type")
   }
 
   test("check types for CreateNamedStruct") {
@@ -216,6 +214,7 @@ class ExpressionTypeCheckingSuite extends SparkFunSuite {
     for (operator <- Seq[(Seq[Expression] => Expression)](Greatest, Least)) {
       assertError(operator(Seq('booleanField)), "requires at least 2 arguments")
       assertError(operator(Seq('intField, 'stringField)), "should all have the same type")
+      assertError(operator(Seq('intField, 'decimalField)), "should all have the same type")
       assertError(operator(Seq('mapField, 'mapField)), "does not support ordering")
     }
   }
