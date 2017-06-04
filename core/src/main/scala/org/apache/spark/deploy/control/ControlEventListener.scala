@@ -548,6 +548,7 @@ class ControlEventListener(conf: SparkConf) extends JobProgressListener(conf) wi
       controller.scaleExecutor(workerUrl, appid, executorAssigned.executorId, coreToStart)
       controller.initControllerExecutor(
         workerUrl,
+        appid,
         executorAssigned.executorId,
         stageId,
         coreMin = coreMin,

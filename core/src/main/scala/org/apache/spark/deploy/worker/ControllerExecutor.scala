@@ -27,7 +27,7 @@ import org.apache.spark.internal.Logging
   */
 class ControllerExecutor
 (conf: SparkConf, executorId: String, deadline: Long,
- coreMin: Double, coreMax: Double, _tasks: Int, core: Double) extends Logging {
+ _tasks: Int, core: Double, appId: String, stageId: Int) extends Logging {
 
   val K: Double = conf.get("spark.control.k").toDouble
   val Ts: Long = conf.get("spark.control.tsample").toLong
@@ -37,13 +37,14 @@ class ControllerExecutor
   val tasks: Double = _tasks.toDouble
   var worker: Worker = _
 
-  var csiOld: Double = core.toDouble
   var SP: Double = 0.0
   var completedTasks: Double = 0.0
-  var cs: Double = 0.0
 
   val timer = new Timer()
   var oldCore = core
+
+  var xc_old: Double = core.toDouble
+  var err_old: Double = 0.0
 
   def function2TimerTask(f: () => Unit): TimerTask = new TimerTask {
     def run() = f()
@@ -52,13 +53,8 @@ class ControllerExecutor
   def start(): Unit = {
     def timerTask() = {
       if (SP < 1.0) SP += Ts.toDouble / deadline.toDouble
-      var nextCore: Double = coreMin
-      if (SP >= 1.0) {
-        SP = 1.0
-        nextCore = coreMax
-      } else {
-        nextCore = nextAllocation()
-      }
+      val nextCore: Double = nextAllocation()
+
       logInfo("SP Updated: " + SP.toString)
       logInfo("Real: " + (completedTasks / tasks).toString)
       logInfo("CoreToAllocate: " + nextCore.toString)
@@ -77,17 +73,20 @@ class ControllerExecutor
   }
 
   def nextAllocation(statx: Int = 3): Double = {
-    val csp = K * (SP - (completedTasks / tasks))
-    if (statx != 3) {
-      cs = coreMin
-    }
-    else {
-      val csi = csiOld + K * (Ts.toDouble / Ti) * (SP - (completedTasks / tasks))
-      cs = math.min(coreMax.toDouble, math.max(coreMin.toDouble, csp + csi))
-    }
-    cs = math.ceil(cs / CQ) * CQ
-    csiOld = cs - csp
-    cs
+    // err = setpoint - real
+    val err = SP - (completedTasks / tasks)
+    val xc = xc_old + (Ts.toDouble / Ti) * err_old
+    var c = K * xc + K * err
+
+    // send c to pollon and receive corrected value
+    c = worker.pollon.fix_cores(appId, stageId, c)
+
+    err_old = err
+    xc_old = (c / K) - err
+
+    // apply c
+    c
+
   }
 
 }

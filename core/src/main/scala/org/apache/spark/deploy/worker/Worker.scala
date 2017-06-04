@@ -166,6 +166,8 @@ private[deploy] class Worker(
   def coresFree: Int = cores - coresUsed
   def memoryFree: Int = memory - memoryUsed
 
+  val pollon: ControllerPollon = new ControllerPollon(0, cores)
+
   private def createWorkDir() {
     workDir = Option(workDirPath).map(new File(_)).getOrElse(new File(sparkHome, "work"))
     try {
@@ -578,11 +580,12 @@ private[deploy] class Worker(
 
 
     case InitControllerExecutor
-      (executorId, stageId, coreMin, coreMax, tasks, deadline, core) =>
+      (appId, executorId, stageId, coreMin, coreMax, tasks, deadline, core) =>
       execIdToProxy(executorId).proxyEndpoint.send(Bind(executorId, stageId.toInt))
       execIdToStageId(executorId) = stageId.toInt
+      execIdToAppId(executorId) = appId
       val controllerExecutor = new ControllerExecutor(
-        conf, executorId, deadline, coreMin, coreMax, tasks, core)
+        conf, executorId, deadline, tasks, core, appId, stageId.toInt)
       logInfo("Created ControllerExecutor: %s , %d , %d , %d , %f".format
       (executorId, stageId, deadline, tasks, core))
       executorIdToController(executorId) = controllerExecutor
