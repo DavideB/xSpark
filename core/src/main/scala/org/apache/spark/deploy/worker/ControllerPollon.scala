@@ -12,7 +12,7 @@ class ControllerPollon(var activeExecutors: Int, val maximumCores: Int) extends 
   type ApplicationId = String
   type Stage = Int
   type Cores = Double
-
+  logInfo("MAX CORES "+maximumCores)
   private var desiredCores = new mutable.HashMap[(ApplicationId, Stage), Cores]()
   private var correctedCores = new mutable.HashMap[(ApplicationId, Stage), Cores]()
 
@@ -58,6 +58,7 @@ class ControllerPollon(var activeExecutors: Int, val maximumCores: Int) extends 
 
     // scale requested cores if needed
     if (totalCoresRequested > maximumCores) {
+      logInfo("REQUESTED CORES "+totalCoresRequested+" > MAX CORES "+maximumCores)
       correctedCores.mapValues(requestedCores => (maximumCores / totalCoresRequested) * requestedCores)
     }
     logInfo("REQUESTED CORES: " + desiredCores.values.toList
