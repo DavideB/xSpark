@@ -37,6 +37,7 @@ class ControllerPollon(var activeExecutors: Int, val maximumCores: Int) extends 
   def increaseActiveExecutors(): Unit = {
     desiredCores.synchronized {
       activeExecutors += 1
+      logInfo("ACTIVE EXECUTORS INCREASED: "+activeExecutors)
       if (desiredCores.keySet.size == activeExecutors) {
         computeCorrectedCores()
       }
@@ -45,6 +46,7 @@ class ControllerPollon(var activeExecutors: Int, val maximumCores: Int) extends 
 
   def decreaseActiveExecutors(): Unit = {
     desiredCores.synchronized {
+      logInfo("ACTIVE EXECUTORS DECREASED: "+activeExecutors)
       activeExecutors -= 1
       if (desiredCores.keySet.size == activeExecutors) {
         computeCorrectedCores()
