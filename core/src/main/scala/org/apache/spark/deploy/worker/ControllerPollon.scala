@@ -54,12 +54,13 @@ class ControllerPollon(var activeExecutors: Int, val maximumCores: Int) extends 
 
   private def computeCorrectedCores(): Unit = {
     val totalCoresRequested = desiredCores.values.sum
-    correctedCores = desiredCores
 
     // scale requested cores if needed
     if (totalCoresRequested > maximumCores) {
       logInfo("REQUESTED CORES "+totalCoresRequested+" > MAX CORES "+maximumCores)
-      correctedCores.mapValues(requestedCores => (maximumCores / totalCoresRequested) * requestedCores)
+      correctedCores = new mutable.HashMap[(ApplicationId, Stage), Cores]()
+      val tempCorrectedCores = desiredCores.mapValues(requestedCores => (maximumCores / totalCoresRequested) * requestedCores)
+      tempCorrectedCores.foreach(cc => correctedCores+=cc)
     }
     logInfo("REQUESTED CORES: " + desiredCores.values.toList
           + " TOTAL: " + totalCoresRequested
