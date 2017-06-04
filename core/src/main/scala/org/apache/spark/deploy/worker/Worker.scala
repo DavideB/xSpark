@@ -472,7 +472,7 @@ private[deploy] class Worker(
           val cpuquota = math.ceil(cores * CPU_PERIOD).toLong
           val driverUrl = appDesc.command.arguments(1)
           logInfo("CREATING PROXY FOR DRIVER: " + driverUrl)
-          val controllerProxy = new ControllerProxy(rpcEnv, driverUrl, execId)
+          val controllerProxy = new ControllerProxy(rpcEnv, driverUrl, execId, pollon)
           controllerProxy.start()
           execIdToProxy(execId.toString) = controllerProxy
           logInfo("PROXY ADDRESS:" + controllerProxy.getAddress)
@@ -593,18 +593,15 @@ private[deploy] class Worker(
       execIdToProxy(executorId).totalTask = tasks
       execIdToProxy(executorId).controllerExecutor = controllerExecutor
       controllerExecutor.start()
-      pollon.increaseActiveExecutors()
 
     case BindWithTasks(executorId, stageId, tasks) =>
       execIdToProxy(executorId).proxyEndpoint.send(Bind(executorId, stageId))
       execIdToProxy(executorId).totalTask = tasks
-      pollon.increaseActiveExecutors()
 
     case UnBind(executorId, stageId) =>
       if (execIdToStageId.getOrElse(executorId, -1) == stageId) {
         execIdToProxy(executorId).proxyEndpoint.send(UnBind(executorId, stageId))
         execIdToProxy(executorId).totalTask = 0
-        pollon.decreaseActiveExecutors()
       }
 
   }

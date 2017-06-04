@@ -30,7 +30,7 @@ import scala.util.{Failure, Success}
   * Created by Matteo on 21/07/2016.
   */
 class ControllerProxy
-(rpcEnvWorker: RpcEnv, val driverUrl: String, val execId: Int) {
+(rpcEnvWorker: RpcEnv, val driverUrl: String, val execId: Int, val pollon: ControllerPollon) {
 
   var proxyEndpoint: RpcEndpointRef = _
   val ENDPOINT_NAME: String =
@@ -46,6 +46,7 @@ class ControllerProxy
   val rpcEnv = RpcEnv.create("Controller", rpcEnvWorker.address.host, 5555, conf, securityMgr)
 
   var executorStageId: Int = -1
+  var pollonKnowsMe: Boolean = false
 
   def start() {
     proxyEndpoint = rpcEnv.setupEndpoint(ENDPOINT_NAME, createProxyEndpoint(driverUrl))
@@ -96,6 +97,8 @@ class ControllerProxy
             taskLaunched = 0
             totalTask = 0
             executorStageId = -1
+            if(pollonKnowsMe)
+              pollon.decreaseActiveExecutors()
             if (controllerExecutor != null){
               controllerExecutor.stop()
             }
@@ -105,6 +108,8 @@ class ControllerProxy
           || (TaskState.KILLED == state)) {
           taskFailed += 1
           driver.get.send(Bind(execId.toString, executorStageId))
+          if(!pollonKnowsMe)
+            pollon.increaseActiveExecutors()
         }
         driver.get.send(StatusUpdate(executorId, taskId, state, data))
 
@@ -138,6 +143,8 @@ class ControllerProxy
         logInfo("Received Binding EID " + executorId + " SID " + stageId.toString)
         driver.get.send(Bind(executorId, stageId))
         executorStageId = stageId
+        if(!pollonKnowsMe)
+          pollon.increaseActiveExecutors()
         taskCompleted = 0
         taskLaunched = 0
 
@@ -147,6 +154,8 @@ class ControllerProxy
           controllerExecutor.stop()
         }
         executorStageId = -1
+        if(pollonKnowsMe)
+          pollon.decreaseActiveExecutors()
 
       case ExecutorScaled(timestamp, executorId, cores, newFreeCores) =>
         ControllerProxy.this.synchronized {
