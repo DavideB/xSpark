@@ -593,15 +593,18 @@ private[deploy] class Worker(
       execIdToProxy(executorId).totalTask = tasks
       execIdToProxy(executorId).controllerExecutor = controllerExecutor
       controllerExecutor.start()
+      pollon.increaseActiveExecutors()
 
     case BindWithTasks(executorId, stageId, tasks) =>
       execIdToProxy(executorId).proxyEndpoint.send(Bind(executorId, stageId))
       execIdToProxy(executorId).totalTask = tasks
+      pollon.increaseActiveExecutors()
 
     case UnBind(executorId, stageId) =>
       if (execIdToStageId.getOrElse(executorId, -1) == stageId) {
         execIdToProxy(executorId).proxyEndpoint.send(UnBind(executorId, stageId))
         execIdToProxy(executorId).totalTask = 0
+        pollon.decreaseActiveExecutors()
       }
 
   }

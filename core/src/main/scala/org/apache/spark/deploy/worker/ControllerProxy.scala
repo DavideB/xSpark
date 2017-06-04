@@ -97,8 +97,6 @@ class ControllerProxy
             totalTask = 0
             executorStageId = -1
             if (controllerExecutor != null){
-              // inform pollon of the active stages
-              controllerExecutor.worker.pollon.decreaseActiveExecutors()
               controllerExecutor.stop()
             }
           }
@@ -142,14 +140,10 @@ class ControllerProxy
         executorStageId = stageId
         taskCompleted = 0
         taskLaunched = 0
-        // inform pollon of the active stages
-        controllerExecutor.worker.pollon.increaseActiveExecutors()
 
       case UnBind(executorId, stageId) =>
         driver.get.send(UnBind(executorId, stageId))
         if (controllerExecutor != null) {
-          // inform pollon of the active stages
-          controllerExecutor.worker.pollon.decreaseActiveExecutors()
           controllerExecutor.stop()
         }
         executorStageId = -1
