@@ -657,7 +657,7 @@ private[deploy] class Master(
 //          worker.coresFree >= coresPerExecutor.getOrElse(1))
 //        .sortBy(_.coresFree).reverse
       val assignedCores = scheduleExecutorsOnWorkers(app, usableWorkers, spreadOutApps)
-
+      logInfo("ASSIGNED CORES "+assignedCores)
       // Now that we've decided how many cores to allocate on each worker, let's allocate them
       for (pos <- 0 until usableWorkers.length if assignedCores(pos) > 0) {
         allocateWorkerResourceToExecutors(
