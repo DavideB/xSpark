@@ -105,7 +105,7 @@ class ControllerExecutor
       cs = worker.pollon.fix_cores(appId, stageId, cs)
     }
     cs = math.ceil(cs / CQ) * CQ
-    csiOld = cs - csp
+    csiOld = (cs - csp) / K
     cs
 
   }
