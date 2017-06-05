@@ -97,7 +97,7 @@ class ControllerProxy
             taskLaunched = 0
             totalTask = 0
             executorStageId = -1
-            pollonKnowsMe.synchronized {
+            this.synchronized {
               if (pollonKnowsMe) {
                 pollon.decreaseActiveExecutors()
                 pollonKnowsMe = false
@@ -112,7 +112,7 @@ class ControllerProxy
           || (TaskState.KILLED == state)) {
           taskFailed += 1
           driver.get.send(Bind(execId.toString, executorStageId))
-          pollonKnowsMe.synchronized {
+          this.synchronized {
             if (!pollonKnowsMe) {
               pollon.increaseActiveExecutors()
               pollonKnowsMe = true
@@ -151,7 +151,7 @@ class ControllerProxy
         logInfo("Received Binding EID " + executorId + " SID " + stageId.toString)
         driver.get.send(Bind(executorId, stageId))
         executorStageId = stageId
-        pollonKnowsMe.synchronized {
+        this.synchronized {
           if (!pollonKnowsMe) {
             pollon.increaseActiveExecutors()
             pollonKnowsMe = true
@@ -166,7 +166,7 @@ class ControllerProxy
           controllerExecutor.stop()
         }
         executorStageId = -1
-        pollonKnowsMe.synchronized {
+        this.synchronized {
           if (pollonKnowsMe) {
             pollon.decreaseActiveExecutors()
             pollonKnowsMe = false
