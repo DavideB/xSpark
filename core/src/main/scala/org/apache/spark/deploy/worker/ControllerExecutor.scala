@@ -87,8 +87,8 @@ class ControllerExecutor
     c = worker.pollon.fix_cores(appId, stageId, c)
 
     err_old = err
-    xc_old = (c / K) - err
-
+//    xc_old = (c / K) - err
+    xc_old = c - (K * err)
     // apply c
     c
 
