@@ -46,6 +46,8 @@ class ControllerExecutor
   var xc_old: Double = core.toDouble
   var err_old: Double = 0.0
 
+  val coreMin = conf.getDouble("spark.control.coremin", 0)
+
   def function2TimerTask(f: () => Unit): TimerTask = new TimerTask {
     def run() = f()
   }
@@ -77,6 +79,9 @@ class ControllerExecutor
     val err = SP - (completedTasks / tasks)
     val xc = xc_old + (Ts.toDouble / Ti) * err_old
     var c = K * xc + K * err
+
+    if (c < coreMin)
+      c = coreMin
 
     // send c to pollon and receive corrected value
     c = worker.pollon.fix_cores(appId, stageId, c)
