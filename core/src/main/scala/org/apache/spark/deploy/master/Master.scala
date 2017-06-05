@@ -590,6 +590,8 @@ private[deploy] class Master(
     val assignedCores = new Array[Int](numUsable) // Number of cores to give to each worker
     val assignedExecutors = new Array[Int](numUsable) // Number of new executors on each worker
     var coresToAssign = math.min(app.coresLeft, usableWorkers.map(_.coresFree).sum)
+    logInfo("minCoresPerExecutor "+minCoresPerExecutor)
+    logInfo("oneExecutorPerWorker "+oneExecutorPerWorker)
 
     /** Return whether the specified worker can launch an executor for this app. */
     def canLaunchExecutor(pos: Int): Boolean = {
@@ -603,6 +605,7 @@ private[deploy] class Master(
         val assignedMemory = assignedExecutors(pos) * memoryPerExecutor
         val enoughMemory = true
         val underLimit = assignedExecutors.sum + app.executors.size < app.executorLimit
+        logInfo("underLimit "+underLimit)
         keepScheduling && enoughCores && enoughMemory && underLimit
       } else {
         // We're adding cores to an existing executor, so no need
@@ -614,6 +617,7 @@ private[deploy] class Master(
     // Keep launching executors until no more workers can accommodate any
     // more executors, or if we have reached this application's limits
     var freeWorkers = (0 until numUsable).filter(canLaunchExecutor)
+    logInfo("FREE WORKERS "+ freeWorkers.toList)
     while (freeWorkers.nonEmpty) {
       freeWorkers.foreach { pos =>
         var keepScheduling = true
