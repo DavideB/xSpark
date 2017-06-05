@@ -594,7 +594,7 @@ private[deploy] class Master(
     /** Return whether the specified worker can launch an executor for this app. */
     def canLaunchExecutor(pos: Int): Boolean = {
       val keepScheduling = coresToAssign >= minCoresPerExecutor
-      val enoughCores = usableWorkers(pos).coresFree - assignedCores(pos) >= minCoresPerExecutor
+      val enoughCores = true
 
       // If we allow multiple executors per worker, then we can always launch new executors.
       // Otherwise, if there is already an executor on this worker, just give it more cores.
@@ -657,7 +657,7 @@ private[deploy] class Master(
 //          worker.coresFree >= coresPerExecutor.getOrElse(1))
 //        .sortBy(_.coresFree).reverse
       val assignedCores = scheduleExecutorsOnWorkers(app, usableWorkers, spreadOutApps)
-      logInfo("ASSIGNED CORES "+assignedCores)
+      logInfo("ASSIGNED CORES "+assignedCores.toList)
       // Now that we've decided how many cores to allocate on each worker, let's allocate them
       for (pos <- 0 until usableWorkers.length if assignedCores(pos) > 0) {
         allocateWorkerResourceToExecutors(
