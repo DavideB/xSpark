@@ -601,7 +601,7 @@ private[deploy] class Master(
       val launchingNewExecutor = !oneExecutorPerWorker || assignedExecutors(pos) == 0
       if (launchingNewExecutor) {
         val assignedMemory = assignedExecutors(pos) * memoryPerExecutor
-        val enoughMemory = usableWorkers(pos).memoryFree - assignedMemory >= memoryPerExecutor
+        val enoughMemory = true
         val underLimit = assignedExecutors.sum + app.executors.size < app.executorLimit
         keepScheduling && enoughCores && enoughMemory && underLimit
       } else {
