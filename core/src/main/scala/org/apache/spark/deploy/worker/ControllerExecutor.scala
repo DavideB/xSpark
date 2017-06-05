@@ -37,8 +37,10 @@ class ControllerExecutor
   val tasks: Double = _tasks.toDouble
   var worker: Worker = _
 
+  var csiOld: Double = core.toDouble
   var SP: Double = 0.0
   var completedTasks: Double = 0.0
+  var cs: Double = 0.0
 
   val timer = new Timer()
   var oldCore = core
@@ -75,22 +77,36 @@ class ControllerExecutor
   }
 
   def nextAllocation(statx: Int = 3): Double = {
-    // err = setpoint - real
-    val err = SP - (completedTasks / tasks)
-    val xc = xc_old + (Ts.toDouble / Ti) * err_old
-    var c = K * xc + K * err
+//    // err = setpoint - real
+//    val err = SP - (completedTasks / tasks)
+//    val xc = xc_old + (Ts.toDouble / Ti) * err_old
+//    var c = K * xc + K * err
+//
+//    if (c < coreMin)
+//      c = coreMin
+//
+//    // send c to pollon and receive corrected value
+//    c = worker.pollon.fix_cores(appId, stageId, c)
+//
+//    err_old = err
+////    xc_old = (c / K) - err
+//    xc_old = c - (K * err)
+//    // apply c
+//    c
 
-    if (c < coreMin)
-      c = coreMin
+    val csp = K * (SP - (completedTasks / tasks))
+    if (statx != 3) {
+      cs = coreMin
+    }
+    else {
+      val csi = csiOld + K * (Ts.toDouble / Ti) * (SP - (completedTasks / tasks))
+      cs = math.max(coreMin.toDouble, csp + csi)
 
-    // send c to pollon and receive corrected value
-    c = worker.pollon.fix_cores(appId, stageId, c)
-
-    err_old = err
-//    xc_old = (c / K) - err
-    xc_old = c - (K * err)
-    // apply c
-    c
+      cs = worker.pollon.fix_cores(appId, stageId, cs)
+    }
+    cs = math.ceil(cs / CQ) * CQ
+    csiOld = cs - csp
+    cs
 
   }
 
