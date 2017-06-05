@@ -589,7 +589,7 @@ private[deploy] class Master(
     val numUsable = usableWorkers.length
     val assignedCores = new Array[Int](numUsable) // Number of cores to give to each worker
     val assignedExecutors = new Array[Int](numUsable) // Number of new executors on each worker
-    var coresToAssign = math.min(app.coresLeft, usableWorkers.map(_.coresFree).sum)
+    var coresToAssign = app.coresLeft
     logInfo("minCoresPerExecutor "+minCoresPerExecutor)
     logInfo("oneExecutorPerWorker "+oneExecutorPerWorker)
 
