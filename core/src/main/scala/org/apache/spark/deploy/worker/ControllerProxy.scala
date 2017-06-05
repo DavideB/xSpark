@@ -97,10 +97,13 @@ class ControllerProxy
             taskLaunched = 0
             totalTask = 0
             executorStageId = -1
-            if(pollonKnowsMe)
-              pollon.decreaseActiveExecutors()
-              pollonKnowsMe = false
-            if (controllerExecutor != null){
+            pollonKnowsMe.synchronized {
+              if (pollonKnowsMe) {
+                pollon.decreaseActiveExecutors()
+                pollonKnowsMe = false
+              }
+            }
+            if (controllerExecutor != null) {
               controllerExecutor.stop()
             }
           }
@@ -109,9 +112,12 @@ class ControllerProxy
           || (TaskState.KILLED == state)) {
           taskFailed += 1
           driver.get.send(Bind(execId.toString, executorStageId))
-          if(!pollonKnowsMe)
-            pollon.increaseActiveExecutors()
-            pollonKnowsMe = true
+          pollonKnowsMe.synchronized {
+            if (!pollonKnowsMe) {
+              pollon.increaseActiveExecutors()
+              pollonKnowsMe = true
+            }
+          }
         }
         driver.get.send(StatusUpdate(executorId, taskId, state, data))
 
@@ -145,9 +151,12 @@ class ControllerProxy
         logInfo("Received Binding EID " + executorId + " SID " + stageId.toString)
         driver.get.send(Bind(executorId, stageId))
         executorStageId = stageId
-        if(!pollonKnowsMe)
-          pollon.increaseActiveExecutors()
-          pollonKnowsMe = true
+        pollonKnowsMe.synchronized {
+          if (!pollonKnowsMe) {
+            pollon.increaseActiveExecutors()
+            pollonKnowsMe = true
+          }
+        }
         taskCompleted = 0
         taskLaunched = 0
 
@@ -157,14 +166,17 @@ class ControllerProxy
           controllerExecutor.stop()
         }
         executorStageId = -1
-        if(pollonKnowsMe)
-          pollon.decreaseActiveExecutors()
-          pollonKnowsMe = false
+        pollonKnowsMe.synchronized {
+          if (pollonKnowsMe) {
+            pollon.decreaseActiveExecutors()
+            pollonKnowsMe = false
+          }
+        }
 
       case ExecutorScaled(timestamp, executorId, cores, newFreeCores) =>
         ControllerProxy.this.synchronized {
           var core = math.round(cores).toInt
-          if (core == 0  && cores != 0.0) core = 1
+          if (core == 0 && cores != 0.0) core = 1
           var deltaFreeCore = core - (taskLaunched - taskCompleted)
           if (deltaFreeCore > core) {
             deltaFreeCore = core
