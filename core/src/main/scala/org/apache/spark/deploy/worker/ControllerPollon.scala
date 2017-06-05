@@ -66,6 +66,8 @@ class ControllerPollon(var activeExecutors: Int, val maximumCores: Int) extends 
       correctedCores = new mutable.HashMap[(ApplicationId, Stage), Cores]()
       val tempCorrectedCores = desiredCores.mapValues(requestedCores => (maximumCores / totalCoresRequested) * requestedCores)
       tempCorrectedCores.foreach(cc => correctedCores+=cc)
+    } else {
+      correctedCores = desiredCores
     }
     logInfo("REQUESTED CORES: " + desiredCores.values.toList
           + " TOTAL: " + totalCoresRequested
