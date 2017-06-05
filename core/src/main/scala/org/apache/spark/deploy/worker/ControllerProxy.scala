@@ -99,6 +99,7 @@ class ControllerProxy
             executorStageId = -1
             if(pollonKnowsMe)
               pollon.decreaseActiveExecutors()
+              pollonKnowsMe = false
             if (controllerExecutor != null){
               controllerExecutor.stop()
             }
@@ -110,6 +111,7 @@ class ControllerProxy
           driver.get.send(Bind(execId.toString, executorStageId))
           if(!pollonKnowsMe)
             pollon.increaseActiveExecutors()
+            pollonKnowsMe = true
         }
         driver.get.send(StatusUpdate(executorId, taskId, state, data))
 
@@ -145,6 +147,7 @@ class ControllerProxy
         executorStageId = stageId
         if(!pollonKnowsMe)
           pollon.increaseActiveExecutors()
+          pollonKnowsMe = true
         taskCompleted = 0
         taskLaunched = 0
 
@@ -156,6 +159,7 @@ class ControllerProxy
         executorStageId = -1
         if(pollonKnowsMe)
           pollon.decreaseActiveExecutors()
+          pollonKnowsMe = false
 
       case ExecutorScaled(timestamp, executorId, cores, newFreeCores) =>
         ControllerProxy.this.synchronized {
