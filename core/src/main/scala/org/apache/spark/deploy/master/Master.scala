@@ -236,7 +236,7 @@ private[deploy] class Master(
         logInfo("Registered app " + description.name + " with ID " + app.id)
         persistenceEngine.addApplication(app)
         driver.send(RegisteredApplication(app.id, self))
-        logDebug("Launching schedule() from RegisterApplication")
+        logInfo("Launching schedule() from RegisterApplication")
         schedule()
       }
 
@@ -583,7 +583,7 @@ private[deploy] class Master(
                                           app: ApplicationInfo,
                                           usableWorkers: Array[WorkerInfo],
                                           spreadOutApps: Boolean): Array[Int] = {
-    logDebug("Executing scheduleExecutorsOnWorkers() with spreadOutApps = " + spreadOutApps)
+    logInfo("Executing scheduleExecutorsOnWorkers() with spreadOutApps = " + spreadOutApps)
     val coresPerExecutor = app.desc.coresPerExecutor
     val minCoresPerExecutor = coresPerExecutor.getOrElse(1)
     val oneExecutorPerWorker = coresPerExecutor.isEmpty
@@ -593,7 +593,7 @@ private[deploy] class Master(
     val assignedExecutors = new Array[Int](numUsable) // Number of new executors on each worker
     var coresToAssign = math.min(app.coresLeft, usableWorkers.map(_.coresFree).sum)
 
-    logDebug("coresPerExecutor = " + coresPerExecutor.getOrElse(-1) +
+    logInfo("coresPerExecutor = " + coresPerExecutor.getOrElse(-1) +
       "; minCoresPerExecutor = " + minCoresPerExecutor +
       "; onExecutorPerWorker = " + oneExecutorPerWorker +
       "; memoryPerExecutor = " + memoryPerExecutor +
@@ -604,7 +604,7 @@ private[deploy] class Master(
     def canLaunchExecutor(pos: Int): Boolean = {
       val keepScheduling = coresToAssign >= minCoresPerExecutor
       val enoughCores = usableWorkers(pos).coresFree - assignedCores(pos) >= minCoresPerExecutor
-      logDebug("keepScheduling = " + keepScheduling +
+      logInfo("keepScheduling = " + keepScheduling +
         "; enoughCores = " + enoughCores +
         "; assignedCores = " + assignedCores.toList +
         "; assignedExecutors = " + assignedExecutors.toList)
@@ -615,7 +615,7 @@ private[deploy] class Master(
         val assignedMemory = assignedExecutors(pos) * memoryPerExecutor
         val enoughMemory = usableWorkers(pos).memoryFree - assignedMemory >= memoryPerExecutor
         val underLimit = assignedExecutors.sum + app.executors.size < app.executorLimit
-        logDebug("if(launchingNewExecutor) -> assignedMemory = " + assignedMemory +
+        logInfo("if(launchingNewExecutor) -> assignedMemory = " + assignedMemory +
           "; enoughMemory = " + enoughMemory +
           "; underLimit = " + underLimit +
           "; keepScheduling = " + keepScheduling +
@@ -624,7 +624,7 @@ private[deploy] class Master(
       } else {
         // We're adding cores to an existing executor, so no need
         // to check memory and executor limits
-        logDebug("else -> keepScheduling = " + keepScheduling +
+        logInfo("else -> keepScheduling = " + keepScheduling +
           "; enoughCores = " + enoughCores)
         keepScheduling && enoughCores
       }
@@ -633,15 +633,15 @@ private[deploy] class Master(
     // Keep launching executors until no more workers can accommodate any
     // more executors, or if we have reached this application's limits
     var freeWorkers = (0 until numUsable).filter(canLaunchExecutor)
-    logDebug("Beginning while loop of scheduleExecutorsOnWorkers()")
+    logInfo("Beginning while loop of scheduleExecutorsOnWorkers()")
     while (freeWorkers.nonEmpty) {
       freeWorkers.foreach { pos =>
-        logDebug("pos = " + pos)
+        logInfo("pos = " + pos)
         var keepScheduling = true
         while (keepScheduling && canLaunchExecutor(pos)) {
           coresToAssign -= minCoresPerExecutor
           assignedCores(pos) += minCoresPerExecutor
-          logDebug("coreToAssign = " + coresToAssign + "; assignedCores = " + assignedCores.toList)
+          logInfo("coreToAssign = " + coresToAssign + "; assignedCores = " + assignedCores.toList)
           // If we are launching one executor per worker, then every iteration assigns 1 core
           // to the executor. Otherwise, every iteration assigns cores to a new executor.
           if (oneExecutorPerWorker) {
@@ -649,7 +649,7 @@ private[deploy] class Master(
           } else {
             assignedExecutors(pos) += 1
           }
-          logDebug("assignedExecutors = " + assignedExecutors.toList)
+          logInfo("assignedExecutors = " + assignedExecutors.toList)
           // Spreading out an application means spreading out its executors across as
           // many workers as possible. If we are not spreading out, then we should keep
           // scheduling executors on this worker until we use all of its resources.
@@ -660,7 +660,7 @@ private[deploy] class Master(
         }
       }
       freeWorkers = freeWorkers.filter(canLaunchExecutor)
-      logDebug("freeWorkers = " + freeWorkers.toList)
+      logInfo("freeWorkers = " + freeWorkers.toList)
     }
     assignedCores
   }
@@ -671,22 +671,22 @@ private[deploy] class Master(
   private def startExecutorsOnWorkers(): Unit = {
     // Right now this is a very simple FIFO scheduler. We keep trying to fit in the first app
     // in the queue, then the second app, etc.
-    logDebug("Beginning for loop in startExecutorsOnWorkers()")
+    logInfo("Beginning for loop in startExecutorsOnWorkers()")
     for (app <- waitingApps if app.coresLeft > 0) {
-      logDebug("app = " + app.id)
+      logInfo("app = " + app.id)
       val coresPerExecutor: Option[Int] = app.desc.coresPerExecutor
-      logDebug("coresPerExecutor = " + coresPerExecutor.getOrElse(-1) + "; -1 means no value")
+      logInfo("coresPerExecutor = " + coresPerExecutor.getOrElse(-1) + "; -1 means no value")
       // Filter out workers that don't have enough resources to launch an executor
       val usableWorkers = workers.toArray.filter(_.state == WorkerState.ALIVE)
         .filter(worker => worker.memoryFree >= app.desc.memoryPerExecutorMB &&
           worker.coresFree >= coresPerExecutor.getOrElse(1))
         .sortBy(_.coresFree).reverse
-      logDebug("usableWorkers = " + usableWorkers.toList.map(w => w.id))
+      logInfo("usableWorkers = " + usableWorkers.toList.map(w => w.id))
       val assignedCores = scheduleExecutorsOnWorkers(app, usableWorkers, spreadOutApps)
-      logDebug("assignedCores = " + assignedCores.toList)
+      logInfo("assignedCores = " + assignedCores.toList)
       // Now that we've decided how many cores to allocate on each worker, let's allocate them
       for (pos <- 0 until usableWorkers.length if assignedCores(pos) > 0) {
-        logDebug("calling allocateWorkerResourceToExecutor for app = " + app.id + "; assignedCores = " +
+        logInfo("calling allocateWorkerResourceToExecutor for app = " + app.id + "; assignedCores = " +
           assignedCores(pos) + "; coresPerExecutor = " + coresPerExecutor.getOrElse(-1) + "; worker = " +
           usableWorkers(pos).id)
         allocateWorkerResourceToExecutors(
@@ -714,10 +714,10 @@ private[deploy] class Master(
       assignedCores / _
     }.getOrElse(1)
     val coresToAssign = coresPerExecutor.getOrElse(assignedCores)
-    logDebug("numExecutors = " + numExecutors + "; coresToAssign = " + coresToAssign)
+    logInfo("numExecutors = " + numExecutors + "; coresToAssign = " + coresToAssign)
     for (i <- 1 to numExecutors) {
       val exec = app.addExecutor(worker, coresToAssign)
-      logDebug("Calling launchExecutor for worker = " + worker.id + " and exec = " + exec.id)
+      logInfo("Calling launchExecutor for worker = " + worker.id + " and exec = " + exec.id)
       launchExecutor(worker, exec)
       app.state = ApplicationState.RUNNING
     }
@@ -731,38 +731,38 @@ private[deploy] class Master(
     if (state != RecoveryState.ALIVE) {
       return
     }
-    logDebug("Executing schedule()")
+    logInfo("Executing schedule()")
     // Drivers take strict precedence over executors
     val shuffledAliveWorkers = Random.shuffle(workers.toSeq.filter(_.state == WorkerState.ALIVE))
     val numWorkersAlive = shuffledAliveWorkers.size
-    logDebug("numWorkersAlive = " + numWorkersAlive + "; waitingDrivers size = " + waitingDrivers.size)
+    logInfo("numWorkersAlive = " + numWorkersAlive + "; waitingDrivers size = " + waitingDrivers.size)
     var curPos = 0
-    logDebug("Beginning for loop of schedule()")
+    logInfo("Beginning for loop of schedule()")
     for (driver <- waitingDrivers.toList) { // iterate over a copy of waitingDrivers
       // We assign workers to each waiting driver in a round-robin fashion. For each driver, we
       // start from the last worker that was assigned a driver, and continue onwards until we have
       // explored all alive workers.
       var launched = false
       var numWorkersVisited = 0
-      logDebug("Beginning while loop for driver " + driver)
+      logInfo("Beginning while loop for driver " + driver)
       while (numWorkersVisited < numWorkersAlive && !launched) {
-        logDebug("numWorkersVisited = " + numWorkersVisited)
+        logInfo("numWorkersVisited = " + numWorkersVisited)
         val worker = shuffledAliveWorkers(curPos)
         numWorkersVisited += 1
-        logDebug("worker.memoryFree = " + worker.memoryFree + "; worker.coresFree = " + worker.coresFree)
-        logDebug("driver.desc.mem = " + driver.desc.mem + "; driver.desc.cores = " + driver.desc.cores)
+        logInfo("worker.memoryFree = " + worker.memoryFree + "; worker.coresFree = " + worker.coresFree)
+        logInfo("driver.desc.mem = " + driver.desc.mem + "; driver.desc.cores = " + driver.desc.cores)
         if (worker.memoryFree >= driver.desc.mem && worker.coresFree >= driver.desc.cores) {
           launchDriver(worker, driver)
           waitingDrivers -= driver
           launched = true
         }
         curPos = (curPos + 1) % numWorkersAlive
-        logDebug("launched = " + launched + "; curPos = " + curPos)
+        logInfo("launched = " + launched + "; curPos = " + curPos)
       }
-      logDebug("Exited while loop")
+      logInfo("Exited while loop")
     }
-    logDebug("Exited for loop")
-    logDebug("Starting startExecutorsOnWorkers()")
+    logInfo("Exited for loop")
+    logInfo("Starting startExecutorsOnWorkers()")
     startExecutorsOnWorkers()
   }
 
