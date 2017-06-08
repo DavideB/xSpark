@@ -53,6 +53,9 @@ private[deploy] class Worker(
     val securityMgr: SecurityManager)
   extends ThreadSafeRpcEndpoint with Logging {
 
+  type ExecutorId = String
+  type ApplicationId = String
+
   private val host = rpcEnv.address.host
   private val port = rpcEnv.address.port
 
@@ -118,15 +121,15 @@ private[deploy] class Worker(
   var workDir: File = null
   val finishedExecutors = new LinkedHashMap[String, ExecutorRunner]
   val drivers = new HashMap[String, DriverRunner]
-  val executors = new HashMap[String, ExecutorRunner]
+  val executors = new HashMap[(ApplicationId, ExecutorId), ExecutorRunner]
   val finishedDrivers = new LinkedHashMap[String, DriverRunner]
   val appDirectories = new HashMap[String, Seq[String]]
   val finishedApps = new HashSet[String]
 
-  val execIdToProxy = new HashMap[String, ControllerProxy]
-  val execIdToAppId = new HashMap[String, String]
-  val executorIdToController = new HashMap[String, ControllerExecutor]
-  val execIdToStageId = new HashMap[String, Int]
+  val execIdToProxy = new HashMap[(ApplicationId, ExecutorId), ControllerProxy]
+  val execIdToAppId = new HashMap[(ApplicationId, ExecutorId), String]
+  val executorIdToController = new HashMap[(ApplicationId, ExecutorId), ControllerExecutor]
+  val execIdToStageId = new HashMap[(ApplicationId, ExecutorId), Int]
   val CPU_PERIOD = conf.getLong("spark.control.cpuperiod", 100000)
 
   val retainedExecutors = conf.getInt("spark.worker.ui.retainedExecutors",
@@ -472,13 +475,13 @@ private[deploy] class Worker(
           val cpuquota = math.ceil(cores * CPU_PERIOD).toLong
           val driverUrl = appDesc.command.arguments(1)
           logInfo("CREATING PROXY FOR DRIVER: " + driverUrl)
-          val controllerProxy = new ControllerProxy(rpcEnv, driverUrl, execId, pollon)
+          val controllerProxy = new ControllerProxy(rpcEnv, driverUrl, execId, appId, pollon)
           controllerProxy.start()
-          execIdToProxy(execId.toString) = controllerProxy
+          execIdToProxy((appId, execId.toString)) = controllerProxy
           logInfo("PROXY ADDRESS:" + controllerProxy.getAddress)
           // scalastyle:off line.size.limit
           val appDescProxed = appDesc.copy(command =
-          Worker.changeDriverToProxy(appDesc.command, execIdToProxy(execId.toString).getAddress))
+          Worker.changeDriverToProxy(appDesc.command, execIdToProxy((appId, execId.toString)).getAddress))
           logInfo(appDescProxed.command.toString)
           val manager = new ExecutorRunner(
             appId,
@@ -498,7 +501,7 @@ private[deploy] class Worker(
             workerUri,
             conf,
             appLocalDirs, ExecutorState.RUNNING)
-          executors(appId + "/" + execId) = manager
+          executors((appId,execId.toString)) = manager
           manager.start()
           coresUsed += cores_
           memoryUsed += memory_
@@ -507,10 +510,10 @@ private[deploy] class Worker(
         } catch {
           case e: Exception =>
             logError(s"Failed to launch executor $appId/$execId for ${appDesc.name}.", e)
-            if (executors.contains(appId + "/" + execId)) {
-              executors(appId + "/" + execId).kill()
+            if (executors.contains((appId,execId.toString))) {
+              executors((appId,execId.toString)).kill()
               val exitCode = Seq("docker", "stop", appId + "." + execId).!
-              executors -= appId + "/" + execId
+              executors -= ((appId, execId.toString))
             }
             sendToMaster(ExecutorStateChanged(appId, execId, ExecutorState.FAILED,
               Some(e.toString), None))
@@ -529,13 +532,13 @@ private[deploy] class Worker(
         logWarning("Invalid Master (" + masterUrl + ") attempted to kill executor " + execId)
       } else {
         val fullId = appId + "/" + execId
-        executors.get(fullId) match {
+        executors.get((appId,execId.toString)) match {
           case Some(executor) =>
             logInfo("Asked to kill executor " + fullId)
             executor.kill()
             val exitCode = Seq("docker", "stop", appId + "." + execId).!
-            execIdToProxy(execId.toString).stop()
-            execIdToProxy.remove(execId.toString)
+            execIdToProxy((appId,execId.toString)).stop()
+            execIdToProxy.remove((appId,execId.toString))
           case None =>
             logInfo("Asked to kill unknown executor " + fullId)
         }
@@ -580,27 +583,27 @@ private[deploy] class Worker(
 
 
     case InitControllerExecutor
-      (executorId, stageId, coreMin, coreMax, tasks, deadline, core) =>
-      execIdToProxy(executorId).proxyEndpoint.send(Bind(executorId, stageId.toInt))
-      execIdToStageId(executorId) = stageId.toInt
+      (appId, executorId, stageId, coreMin, coreMax, tasks, deadline, core) =>
+      execIdToProxy((appId, executorId)).proxyEndpoint.send(Bind(appId, executorId, stageId.toInt))
+      execIdToStageId((appId, executorId)) = stageId.toInt
       val controllerExecutor = new ControllerExecutor(
         conf, executorId, deadline, coreMin, coreMax, tasks, core)
       logInfo("Created ControllerExecutor: %s , %d , %d , %d , %f".format
       (executorId, stageId, deadline, tasks, core))
-      executorIdToController(executorId) = controllerExecutor
+      executorIdToController((appId, executorId)) = controllerExecutor
       controllerExecutor.worker = this
-      execIdToProxy(executorId).totalTask = tasks
-      execIdToProxy(executorId).controllerExecutor = controllerExecutor
+      execIdToProxy((appId, executorId)).totalTask = tasks
+      execIdToProxy((appId, executorId)).controllerExecutor = controllerExecutor
       controllerExecutor.start()
 
-    case BindWithTasks(executorId, stageId, tasks) =>
-      execIdToProxy(executorId).proxyEndpoint.send(Bind(executorId, stageId))
-      execIdToProxy(executorId).totalTask = tasks
+    case BindWithTasks(appId, executorId, stageId, tasks) =>
+      execIdToProxy((appId, executorId)).proxyEndpoint.send(Bind(appId, executorId, stageId))
+      execIdToProxy((appId, executorId)).totalTask = tasks
 
-    case UnBind(executorId, stageId) =>
-      if (execIdToStageId.getOrElse(executorId, -1) == stageId) {
-        execIdToProxy(executorId).proxyEndpoint.send(UnBind(executorId, stageId))
-        execIdToProxy(executorId).totalTask = 0
+    case UnBind(appId, executorId, stageId) =>
+      if (execIdToStageId.getOrElse((appId, executorId), -1) == stageId) {
+        execIdToProxy((appId, executorId)).proxyEndpoint.send(UnBind(appId, executorId, stageId))
+        execIdToProxy((appId, executorId)).totalTask = 0
       }
 
   }
@@ -619,7 +622,7 @@ private[deploy] class Worker(
       commandUpdateDocker.run
       var coreFree = math.round(coresWanted).toInt
       if (coreFree == 0) coreFree = 1
-      execIdToProxy(execId.toString).proxyEndpoint.send(
+      execIdToProxy((appId, execId)).proxyEndpoint.send(
         ExecutorScaled(System.currentTimeMillis(), execId,
           coresWanted, coreFree))
       logInfo("Scaled executorId %s  of appId %s to  %f Core".format(execId, appId, coresWanted))
@@ -629,10 +632,10 @@ private[deploy] class Worker(
     } catch {
       case e: Exception =>
         logError(s"Failed to scale executor $appId/$execId ", e)
-        if (executors.contains(appId + "/" + execId)) {
-          executors(appId + "/" + execId).kill()
+        if (executors.contains((appId, execId))) {
+          executors((appId, execId)).kill()
           val exitCode = Seq("docker", "stop", appId + "." + execId).!
-          executors -= appId + "/" + execId
+          executors -= ((appId, execId))
           coresAllocated -= appId + "/" + execId
         }
         sendToMaster(ExecutorStateChanged(appId, execId.toInt, ExecutorState.FAILED,
@@ -759,12 +762,12 @@ private[deploy] class Worker(
       val fullId = appId + "/" + executorStateChanged.execId
       val message = executorStateChanged.message
       val exitStatus = executorStateChanged.exitStatus
-      executors.get(fullId) match {
+      executors.get((appId, executorStateChanged.execId.toString)) match {
         case Some(executor) =>
           logInfo("Executor " + fullId + " finished with state " + state +
             message.map(" message " + _).getOrElse("") +
             exitStatus.map(" exitStatus " + _).getOrElse(""))
-          executors -= fullId
+          executors -= ((appId, executorStateChanged.execId.toString))
           finishedExecutors(fullId) = executor
           trimFinishedExecutorsIfNecessary()
           coresUsed -= executor.cores
