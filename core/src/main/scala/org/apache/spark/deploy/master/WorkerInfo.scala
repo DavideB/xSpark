@@ -45,8 +45,8 @@ private[spark] class WorkerInfo(
 
   init()
 
-  def coresFree: Int = cores //- coresUsed
-  def memoryFree: Int = memory //- memoryUsed
+  def coresFree: Int = cores - coresUsed
+  def memoryFree: Int = memory - memoryUsed
 
   private def readObject(in: java.io.ObjectInputStream): Unit = Utils.tryOrIOException {
     in.defaultReadObject()
