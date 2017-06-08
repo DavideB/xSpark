@@ -672,7 +672,7 @@ private[deploy] class Master(
     // Right now this is a very simple FIFO scheduler. We keep trying to fit in the first app
     // in the queue, then the second app, etc.
     logInfo("Beginning for loop in startExecutorsOnWorkers()")
-    for (app <- waitingApps if app.coresLeft > 0) {
+    for (app <- waitingApps if (app.coresLeft > 0 && app.coresGranted < workers.map(_.cores).sum)) {
       logInfo("app = " + app.id + " app.coresLeft = "+app.coresLeft + " app.coresGranted = "+app.coresGranted)
       val coresPerExecutor: Option[Int] = app.desc.coresPerExecutor
       logInfo("coresPerExecutor = " + coresPerExecutor.getOrElse(-1) + "; -1 means no value")
