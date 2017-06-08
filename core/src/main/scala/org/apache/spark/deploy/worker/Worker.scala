@@ -163,8 +163,8 @@ private[deploy] class Worker(
   var coresAllocated: Map[String, List[Int]] = Map()
   var memoryUsed = 0
 
-  def coresFree: Int = cores //- coresUsed
-  def memoryFree: Int = memory //- memoryUsed
+  def coresFree: Int = cores - coresUsed
+  def memoryFree: Int = memory - memoryUsed
 
   val pollon: ControllerPollon = new ControllerPollon(0, cores)
 
