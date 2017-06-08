@@ -673,7 +673,7 @@ private[deploy] class Master(
     // in the queue, then the second app, etc.
     logInfo("Beginning for loop in startExecutorsOnWorkers()")
     for (app <- waitingApps if app.coresLeft > 0) {
-      logInfo("app = " + app.id)
+      logInfo("app = " + app.id + " app.coresLeft = "+app.coresLeft + " app.coresGranted = "+app.coresGranted)
       val coresPerExecutor: Option[Int] = app.desc.coresPerExecutor
       logInfo("coresPerExecutor = " + coresPerExecutor.getOrElse(-1) + "; -1 means no value")
       // Filter out workers that don't have enough resources to launch an executor
