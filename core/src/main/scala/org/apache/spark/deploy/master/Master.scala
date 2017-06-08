@@ -672,41 +672,44 @@ private[deploy] class Master(
     // Right now this is a very simple FIFO scheduler. We keep trying to fit in the first app
     // in the queue, then the second app, etc.
     logInfo("Beginning for loop in startExecutorsOnWorkers()")
-    for (app <- waitingApps if (app.coresLeft > 0 && app.coresGranted < workers.map(_.cores).sum)) {
-      logInfo("app = " + app.id + " app.coresLeft = "+app.coresLeft + " app.coresGranted = "+app.coresGranted)
-      val coresPerExecutor: Option[Int] = app.desc.coresPerExecutor
-      logInfo("coresPerExecutor = " + coresPerExecutor.getOrElse(-1) + "; -1 means no value")
-      // Filter out workers that don't have enough resources to launch an executor
-      val usableWorkers = workers.toArray.filter(_.state == WorkerState.ALIVE)
-        .filter(worker => worker.memory >= app.desc.memoryPerExecutorMB &&
-          worker.cores >= coresPerExecutor.getOrElse(1))
-        .sortBy(_.coresFree).reverse
-      logInfo("usableWorkers = " + usableWorkers.toList.map(w => w.id))
-      val assignedCores = scheduleExecutorsOnWorkers(app, usableWorkers, spreadOutApps)
-      logInfo("assignedCores = " + assignedCores.toList)
-      // Now that we've decided how many cores to allocate on each worker, let's allocate them
-      for (pos <- 0 until usableWorkers.length if assignedCores(pos) > 0) {
-        logInfo("calling allocateWorkerResourceToExecutor for app = " + app.id + "; assignedCores = " +
-          assignedCores(pos) + "; coresPerExecutor = " + coresPerExecutor.getOrElse(-1) + "; worker = " +
-          usableWorkers(pos).id)
-        allocateWorkerResourceToExecutors(
-          app, assignedCores(pos), coresPerExecutor, usableWorkers(pos))
+    for (app <- waitingApps if app.coresLeft > 0) {
+      if (app.coresGranted >= workers.map(_.cores).sum) {
+        logInfo("app = " + app.id + " app.coresLeft = " + app.coresLeft + " app.coresGranted = " + app.coresGranted)
+        val coresPerExecutor: Option[Int] = app.desc.coresPerExecutor
+        logInfo("coresPerExecutor = " + coresPerExecutor.getOrElse(-1) + "; -1 means no value")
+        // Filter out workers that don't have enough resources to launch an executor
+        val usableWorkers = workers.toArray.filter(_.state == WorkerState.ALIVE)
+          .filter(worker => worker.memory >= app.desc.memoryPerExecutorMB &&
+            worker.cores >= coresPerExecutor.getOrElse(1))
+          .sortBy(_.coresFree).reverse
+        logInfo("usableWorkers = " + usableWorkers.toList.map(w => w.id))
+        val assignedCores = scheduleExecutorsOnWorkers(app, usableWorkers, spreadOutApps)
+        logInfo("assignedCores = " + assignedCores.toList)
+        // Now that we've decided how many cores to allocate on each worker, let's allocate them
+        for (pos <- 0 until usableWorkers.length if assignedCores(pos) > 0) {
+          logInfo("calling allocateWorkerResourceToExecutor for app = " + app.id + "; assignedCores = " +
+            assignedCores(pos) + "; coresPerExecutor = " + coresPerExecutor.getOrElse(-1) + "; worker = " +
+            usableWorkers(pos).id)
+          allocateWorkerResourceToExecutors(
+            app, assignedCores(pos), coresPerExecutor, usableWorkers(pos))
+        }
       }
     }
   }
 
   /**
-   * Allocate a worker's resources to one or more executors.
-   * @param app the info of the application which the executors belong to
-   * @param assignedCores number of cores on this worker for this application
-   * @param coresPerExecutor number of cores per executor
-   * @param worker the worker info
-   */
+    * Allocate a worker's resources to one or more executors.
+    *
+    * @param app              the info of the application which the executors belong to
+    * @param assignedCores    number of cores on this worker for this application
+    * @param coresPerExecutor number of cores per executor
+    * @param worker           the worker info
+    */
   private def allocateWorkerResourceToExecutors(
-      app: ApplicationInfo,
-      assignedCores: Int,
-      coresPerExecutor: Option[Int],
-      worker: WorkerInfo): Unit = {
+                                                 app: ApplicationInfo,
+                                                 assignedCores: Int,
+                                                 coresPerExecutor: Option[Int],
+                                                 worker: WorkerInfo): Unit = {
     // If the number of cores per executor is specified, we divide the cores assigned
     // to this worker evenly among the executors with no remainder.
     // Otherwise, we launch a single executor that grabs all the assignedCores on this worker.
