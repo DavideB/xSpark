@@ -718,7 +718,7 @@ private[deploy] class Master(
     logInfo("numExecutors = " + numExecutors + "; coresToAssign = " + coresToAssign)
     for (i <- 1 to numExecutors) {
       val exec = app.addExecutor(worker, coresToAssign)
-      logInfo("Calling launchExecutor for worker = " + worker.id + " and exec = " + exec.id)
+      logInfo("Calling launchExecutor for worker = " + worker.id + " and exec = " + exec.id + " for app = "+app.id)
       launchExecutor(worker, exec)
       app.state = ApplicationState.RUNNING
     }
