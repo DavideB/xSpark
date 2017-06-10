@@ -26,8 +26,10 @@ import org.apache.spark.internal.Logging
   * Created by Matteo on 21/07/2016.
   */
 class ControllerExecutor
-(conf: SparkConf, executorId: String, deadline: Long,
+(conf: SparkConf, val applicationId: String, executorId: String, deadline: Long,
  coreMin: Double, coreMax: Double, _tasks: Int, core: Double) extends Logging {
+
+  logInfo("Initializing ControllerExecutor for "+applicationId+"/"+executorId)
 
   val K: Double = conf.get("spark.control.k").toDouble
   val Ts: Long = conf.get("spark.control.tsample").toLong
@@ -65,7 +67,7 @@ class ControllerExecutor
 
       if (nextCore != oldCore) {
         oldCore = nextCore
-        worker.onScaleExecutor("", executorId, nextCore)
+        worker.onScaleExecutor(applicationId, executorId, nextCore)
       }
 
     }
@@ -86,7 +88,7 @@ class ControllerExecutor
       cs = math.min(coreMax.toDouble, csp + csi)
     }
 
-    cs = worker.pollon.fix_cores(executorId, cs)
+    cs = worker.pollon.fix_cores(applicationId, executorId, cs)
 
     cs = math.ceil(cs / CQ) * CQ
     csiOld = cs - csp

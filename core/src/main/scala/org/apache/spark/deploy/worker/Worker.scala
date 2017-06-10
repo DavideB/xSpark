@@ -597,7 +597,7 @@ private[deploy] class Worker(
       execIdToProxy((appId, executorId)).proxyEndpoint.send(Bind(appId, executorId, stageId.toInt))
       execIdToStageId((appId, executorId)) = stageId.toInt
       val controllerExecutor = new ControllerExecutor(
-        conf, executorId, deadline, coreMin, coreMax, tasks, core)
+        conf, appId, executorId, deadline, coreMin, coreMax, tasks, core)
       logInfo("Created ControllerExecutor: %s , %d , %d , %d , %f".format
       (executorId, stageId, deadline, tasks, core))
       executorIdToController((appId, executorId)) = controllerExecutor
