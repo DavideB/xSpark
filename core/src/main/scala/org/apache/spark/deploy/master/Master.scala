@@ -591,7 +591,7 @@ private[deploy] class Master(
     val numUsable = usableWorkers.length
     val assignedCores = new Array[Int](numUsable) // Number of cores to give to each worker
     val assignedExecutors = new Array[Int](numUsable) // Number of new executors on each worker
-    var coresToAssign = math.min(app.coresLeft, usableWorkers.map(_.cores).sum)
+    var coresToAssign = math.min(app.coresLeft, usableWorkers.map(_.coresFree(app.id)).sum)
 
     logInfo("coresPerExecutor = " + coresPerExecutor.getOrElse(-1) +
       "; minCoresPerExecutor = " + minCoresPerExecutor +
@@ -603,7 +603,7 @@ private[deploy] class Master(
     /** Return whether the specified worker can launch an executor for this app. */
     def canLaunchExecutor(pos: Int): Boolean = {
       val keepScheduling = coresToAssign >= minCoresPerExecutor
-      val enoughCores = usableWorkers(pos).cores - assignedCores(pos) >= minCoresPerExecutor
+      val enoughCores = usableWorkers(pos).coresFree(app.id) - assignedCores(pos) >= minCoresPerExecutor
       logInfo("keepScheduling = " + keepScheduling +
         "; enoughCores = " + enoughCores +
         "; assignedCores = " + assignedCores.toList +
@@ -613,7 +613,7 @@ private[deploy] class Master(
       val launchingNewExecutor = !oneExecutorPerWorker || assignedExecutors(pos) == 0
       if (launchingNewExecutor) {
         val assignedMemory = assignedExecutors(pos) * memoryPerExecutor
-        val enoughMemory = usableWorkers(pos).memory - assignedMemory >= memoryPerExecutor
+        val enoughMemory = usableWorkers(pos).memoryFree(app.id) - assignedMemory >= memoryPerExecutor
         val underLimit = assignedExecutors.sum + app.executors.size < app.executorLimit
         logInfo("if(launchingNewExecutor) -> assignedMemory = " + assignedMemory +
           "; enoughMemory = " + enoughMemory +
@@ -673,14 +673,13 @@ private[deploy] class Master(
     // in the queue, then the second app, etc.
     logInfo("Beginning for loop in startExecutorsOnWorkers()")
     for (app <- waitingApps if app.coresLeft > 0) {
-      if (app.coresGranted < workers.map(_.cores).sum) {
         logInfo("app = " + app.id + " app.coresLeft = " + app.coresLeft + " app.coresGranted = " + app.coresGranted)
         val coresPerExecutor: Option[Int] = app.desc.coresPerExecutor
         logInfo("coresPerExecutor = " + coresPerExecutor.getOrElse(-1) + "; -1 means no value")
         // Filter out workers that don't have enough resources to launch an executor
         val usableWorkers = workers.toArray.filter(_.state == WorkerState.ALIVE)
-          .filter(worker => worker.memory >= app.desc.memoryPerExecutorMB &&
-            worker.cores >= coresPerExecutor.getOrElse(1))
+          .filter(worker => worker.memoryFree(app.id) >= app.desc.memoryPerExecutorMB &&
+            worker.coresFree(app.id) >= coresPerExecutor.getOrElse(1))
           .sortBy(_.coresFree).reverse
         logInfo("usableWorkers = " + usableWorkers.toList.map(w => w.id))
         val assignedCores = scheduleExecutorsOnWorkers(app, usableWorkers, spreadOutApps)
@@ -693,7 +692,6 @@ private[deploy] class Master(
           allocateWorkerResourceToExecutors(
             app, assignedCores(pos), coresPerExecutor, usableWorkers(pos))
         }
-      }
     }
   }
 

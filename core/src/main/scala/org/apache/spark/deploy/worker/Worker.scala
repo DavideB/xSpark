@@ -41,6 +41,8 @@ import org.apache.spark.rpc._
 import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages._
 import org.apache.spark.util.{ThreadUtils, Utils}
 
+import scala.collection.mutable
+
 private[deploy] class Worker(
     override val rpcEnv: RpcEnv,
     webUiPort: Int,
@@ -168,6 +170,12 @@ private[deploy] class Worker(
 
   def coresFree: Int = cores - coresUsed
   def memoryFree: Int = memory - memoryUsed
+
+  val applicationIdToCoresUsed = new mutable.HashMap[ApplicationId, Int]().withDefaultValue(0)
+  val applicationIdToMemoryUsed = new mutable.HashMap[ApplicationId, Int]().withDefaultValue(0)
+
+  def coresFree(applicationId: ApplicationId): Int = cores - applicationIdToCoresUsed(applicationId)
+  def memoryFree(applicationId: ApplicationId): Int = memory - applicationIdToMemoryUsed(applicationId)
 
   val pollon: ControllerPollon = new ControllerPollon(0, cores)
 
@@ -504,7 +512,9 @@ private[deploy] class Worker(
           executors((appId,execId.toString)) = manager
           manager.start()
           coresUsed += cores_
+          applicationIdToCoresUsed(appId) = applicationIdToCoresUsed(appId) + cores_
           memoryUsed += memory_
+          applicationIdToMemoryUsed(appId) = applicationIdToMemoryUsed(appId) + memory_
           sendToMaster(ExecutorStateChanged(appId, execId, manager.state, None, None))
           // scalastyle:on line.size.limit
         } catch {
@@ -771,7 +781,9 @@ private[deploy] class Worker(
           finishedExecutors(fullId) = executor
           trimFinishedExecutorsIfNecessary()
           coresUsed -= executor.cores
+          applicationIdToCoresUsed(appId) = applicationIdToCoresUsed(appId) - executor.cores
           memoryUsed -= executor.memory
+          applicationIdToMemoryUsed(appId) = applicationIdToMemoryUsed(appId) - executor.memory
           coresAllocated -= fullId
         case None =>
           logInfo("Unknown Executor " + fullId + " finished with state " + state +
