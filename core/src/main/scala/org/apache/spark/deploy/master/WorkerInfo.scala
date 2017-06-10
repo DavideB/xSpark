@@ -96,6 +96,8 @@ private[spark] class WorkerInfo(
     if (executors.contains(exec.fullId)) {
       coresUsed += exec.cores - executors(exec.fullId).cores
       memoryUsed += exec.memory - executors(exec.fullId).memory
+      applicationIdToCoresUsed(exec.application.id) = applicationIdToCoresUsed(exec.application.id) + exec.cores - executors(exec.fullId).cores
+      applicationIdToMemoryUsed(exec.application.id) = applicationIdToMemoryUsed(exec.application.id) + exec.memory - executors(exec.fullId).memory
       executors(exec.fullId) = exec
     }
   }
