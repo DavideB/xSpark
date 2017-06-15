@@ -42,7 +42,7 @@ private[spark] object CoarseGrainedClusterMessages {
   case class ScaleExecutor(appId: String, execId: String, cores: Double)
     extends CoarseGrainedClusterMessage
 
-  case class ExecutorScaled(timestamp: Long, execId: String, cores: Double, newFreeCores: Int)
+  case class ExecutorScaled(timestamp: Long, appId: String, execId: String, cores: Double, newFreeCores: Int)
     extends CoarseGrainedClusterMessage
 
   // ControllerJob to ControllerExecutor (Worker)
@@ -57,7 +57,7 @@ private[spark] object CoarseGrainedClusterMessages {
   extends CoarseGrainedClusterMessage
 
   // Proxy to driver
-  case class ExecutorFinishedTask(executorId: String,
+  case class ExecutorFinishedTask(appId: String, executorId: String,
                                   stageId: Int) extends CoarseGrainedClusterMessage
 
   // Driver to executors
@@ -75,6 +75,7 @@ private[spark] object CoarseGrainedClusterMessages {
 
   // Executors to driver
   case class RegisterExecutor(
+                               appId: String,
       executorId: String,
       executorRef: RpcEndpointRef,
       hostname: String,
@@ -82,14 +83,15 @@ private[spark] object CoarseGrainedClusterMessages {
       logUrls: Map[String, String])
     extends CoarseGrainedClusterMessage
 
-  case class StatusUpdate(executorId: String, taskId: Long, state: TaskState,
+  case class StatusUpdate(appId: String, executorId: String, taskId: Long, state: TaskState,
     data: SerializableBuffer) extends CoarseGrainedClusterMessage
 
   object StatusUpdate {
+
     /** Alternate factory method that takes a ByteBuffer directly for the data field */
-    def apply(executorId: String, taskId: Long, state: TaskState, data: ByteBuffer)
+    def apply(appId: String, executorId: String, taskId: Long, state: TaskState, data: ByteBuffer)
       : StatusUpdate = {
-      StatusUpdate(executorId, taskId, state, new SerializableBuffer(data))
+      StatusUpdate(appId, executorId, taskId, state, new SerializableBuffer(data))
     }
   }
 
@@ -102,7 +104,7 @@ private[spark] object CoarseGrainedClusterMessages {
 
   case object StopExecutors extends CoarseGrainedClusterMessage
 
-  case class RemoveExecutor(executorId: String, reason: ExecutorLossReason)
+  case class RemoveExecutor(appId: String, executorId: String, reason: ExecutorLossReason)
     extends CoarseGrainedClusterMessage
 
   case class SetupDriver(driver: RpcEndpointRef) extends CoarseGrainedClusterMessage

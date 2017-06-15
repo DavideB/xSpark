@@ -60,6 +60,9 @@ private[spark] class TaskSchedulerImpl(
 {
   def this(sc: SparkContext) = this(sc, sc.conf.getInt("spark.task.maxFailures", 4))
 
+  type ApplicationId = String
+  type ExecutorId = String
+
   val conf = sc.conf
 
   // How often to check for speculative tasks
@@ -79,10 +82,10 @@ private[spark] class TaskSchedulerImpl(
   private val taskSetsByStageIdAndAttempt = new HashMap[Int, HashMap[Int, TaskSetManager]]
 
   private[scheduler] val taskIdToTaskSetManager = new HashMap[Long, TaskSetManager]
-  val taskIdToExecutorId = new HashMap[Long, String]
+  val taskIdToExecutorId = new HashMap[Long, (ApplicationId, ExecutorId)]
 
-  val execIdToTaskSet = new HashMap[String, Long].withDefaultValue(-1)
-  val taskSetToExecId = new HashMap[Long, Set[String]].withDefaultValue(Set())
+  val execIdToTaskSet = new HashMap[(ApplicationId, ExecutorId), Long].withDefaultValue(-1)
+  val taskSetToExecId = new HashMap[(ApplicationId,Long), Set[ExecutorId]].withDefaultValue(Set())
 
   @volatile private var hasReceivedTask = false
   @volatile private var hasLaunchedTask = false
@@ -92,17 +95,17 @@ private[spark] class TaskSchedulerImpl(
   val nextTaskId = new AtomicLong(0)
 
   // Number of tasks running on each executor
-  private val executorIdToTaskCount = new HashMap[String, Int]
+  private val executorIdToTaskCount = new HashMap[(ApplicationId, ExecutorId), Int]
 
-  def runningTasksByExecutors(): Map[String, Int] = executorIdToTaskCount.toMap
+  def runningTasksByExecutors(appId: ApplicationId): Map[String, Int] = executorIdToTaskCount.filter{case ((aid, _),_) => aid == appId}.map{case((_, eid), v) => (eid, v)}.toMap
 
   // The set of executors we have on each host; this is used to compute hostsAlive, which
   // in turn is used to decide when we can attain data locality on a given host
-  protected val executorsByHost = new HashMap[String, HashSet[String]]
+  protected val executorsByHost = new HashMap[String, HashSet[(ApplicationId, ExecutorId)]]
 
   protected val hostsByRack = new HashMap[String, HashSet[String]]
 
-  protected val executorIdToHost = new HashMap[String, String]
+  protected val executorIdToHost = new HashMap[(ApplicationId, ExecutorId), String]
 
   // Listener object to pass upcalls into
   var dagScheduler: DAGScheduler = null
@@ -254,19 +257,20 @@ private[spark] class TaskSchedulerImpl(
     var launchedTask = false
     for (i <- 0 until shuffledOffers.size) {
       val execId = shuffledOffers(i).executorId
+      val appId = shuffledOffers(i).applicationId
       val host = shuffledOffers(i).host
       val stageId = taskSet.stageId
       logInfo("CPU FREE: %d, EID %s, SID, %d, ASSIGNED SID %d".format(availableCpus(i),
-        execId, stageId, execIdToTaskSet(execId)))
-      if (availableCpus(i) >= CPUS_PER_TASK && execIdToTaskSet(execId) == stageId) {
+        execId, stageId, execIdToTaskSet(appId, execId)))
+      if (availableCpus(i) >= CPUS_PER_TASK && execIdToTaskSet(appId, execId) == stageId) {
         try {
           for (task <- taskSet.resourceOffer(execId, host, maxLocality)) {
             tasks(i) += task
             val tid = task.taskId
             taskIdToTaskSetManager(tid) = taskSet
-            taskIdToExecutorId(tid) = execId
-            executorIdToTaskCount(execId) += 1
-            executorsByHost(host) += execId
+            taskIdToExecutorId(tid) = (appId, execId)
+            executorIdToTaskCount(appId, execId) += 1
+            executorsByHost(host) += ((appId, execId))
             availableCpus(i) -= CPUS_PER_TASK
             assert(availableCpus(i) >= 0)
             launchedTask = true
@@ -293,10 +297,10 @@ private[spark] class TaskSchedulerImpl(
     // Also track if new executor is added
     var newExecAvail = false
     for (o <- offers) {
-      executorIdToHost(o.executorId) = o.host
-      executorIdToTaskCount.getOrElseUpdate(o.executorId, 0)
+      executorIdToHost(o.applicationId, o.executorId) = o.host
+      executorIdToTaskCount.getOrElseUpdate((o.applicationId, o.executorId), 0)
       if (!executorsByHost.contains(o.host)) {
-        executorsByHost(o.host) = new HashSet[String]()
+        executorsByHost(o.host) = new HashSet[(ApplicationId, ExecutorId)]()
         executorAdded(o.executorId, o.host)
         newExecAvail = true
       }
@@ -343,12 +347,12 @@ private[spark] class TaskSchedulerImpl(
       try {
         if (state == TaskState.LOST && taskIdToExecutorId.contains(tid)) {
           // We lost this entire executor, so remember that it's gone
-          val execId = taskIdToExecutorId(tid)
+          val (appId, execId) = taskIdToExecutorId(tid)
 
-          if (executorIdToTaskCount.contains(execId)) {
+          if (executorIdToTaskCount.contains((appId, execId))) {
             reason = Some(
               SlaveLost(s"Task $tid was lost, so marking the executor as lost as well."))
-            removeExecutor(execId, reason.get)
+            removeExecutor(appId, execId, reason.get)
             failedExecutor = Some(execId)
           }
         }
@@ -455,19 +459,19 @@ private[spark] class TaskSchedulerImpl(
     }
   }
 
-  def bind(executorId: String, stageId: Int): Unit = {
-    logInfo("Asked to bind "+executorId+ " to stage "+stageId+", previous stage "+execIdToTaskSet(executorId))
-    if (execIdToTaskSet(executorId) == -1) {
+  def bind(appId: String, executorId: String, stageId: Int): Unit = {
+    logInfo("Asked to bind "+executorId+ " to stage "+stageId+", previous stage "+execIdToTaskSet((appId, executorId)))
+    if (execIdToTaskSet((appId, executorId)) == -1) {
       logInfo("BINDING EXECUTOR ID: %s TO STAGEID %d".format(executorId, stageId))
-      execIdToTaskSet(executorId) = stageId
+      execIdToTaskSet((appId, executorId)) = stageId
     }
   }
 
-  def unbind(executorId: String, stageId: Int): Unit = {
-    logInfo("Asked to unbind "+executorId+ " from stage "+stageId+", previous stage "+execIdToTaskSet(executorId))
-    if (execIdToTaskSet(executorId) == stageId) {
+  def unbind(appId: String, executorId: String, stageId: Int): Unit = {
+    logInfo("Asked to unbind "+executorId+ " from stage "+stageId+", previous stage "+execIdToTaskSet((appId, executorId)))
+    if (execIdToTaskSet((appId, executorId)) == stageId) {
       logInfo("UNBINDING EXECUTOR ID: %s FROM SID: %d".format(executorId, stageId))
-      execIdToTaskSet(executorId) = -1
+      execIdToTaskSet((appId, executorId)) = -1
     }
   }
 
@@ -495,23 +499,23 @@ private[spark] class TaskSchedulerImpl(
     }
   }
 
-  override def executorLost(executorId: String, reason: ExecutorLossReason): Unit = {
+  override def executorLost(appId: ApplicationId, executorId: String, reason: ExecutorLossReason): Unit = {
     var failedExecutor: Option[String] = None
 
     synchronized {
-      if (executorIdToTaskCount.contains(executorId)) {
-        val hostPort = executorIdToHost(executorId)
-        logExecutorLoss(executorId, hostPort, reason)
-        removeExecutor(executorId, reason)
+      if (executorIdToTaskCount.contains((appId, executorId))) {
+        val hostPort = executorIdToHost((appId, executorId))
+        logExecutorLoss(appId, executorId, hostPort, reason)
+        removeExecutor(appId, executorId, reason)
         failedExecutor = Some(executorId)
       } else {
-        executorIdToHost.get(executorId) match {
+        executorIdToHost.get((appId, executorId)) match {
           case Some(hostPort) =>
             // If the host mapping still exists, it means we don't know the loss reason for the
             // executor. So call removeExecutor() to update tasks running on that executor when
             // the real loss reason is finally known.
-            logExecutorLoss(executorId, hostPort, reason)
-            removeExecutor(executorId, reason)
+            logExecutorLoss(appId, executorId, hostPort, reason)
+            removeExecutor(appId, executorId, reason)
 
           case None =>
             // We may get multiple executorLost() calls with different loss reasons. For example,
@@ -530,15 +534,16 @@ private[spark] class TaskSchedulerImpl(
   }
 
   private def logExecutorLoss(
+                             appId: ApplicationId,
       executorId: String,
       hostPort: String,
       reason: ExecutorLossReason): Unit = reason match {
     case LossReasonPending =>
-      logDebug(s"Executor $executorId on $hostPort lost, but reason not yet known.")
+      logDebug(s"Executor "+appId+"/"+executorId+" on $hostPort lost, but reason not yet known.")
     case ExecutorKilled =>
-      logInfo(s"Executor $executorId on $hostPort killed by driver.")
+      logInfo(s"Executor "+appId+"/"+executorId+" on $hostPort killed by driver.")
     case _ =>
-      logError(s"Lost executor $executorId on $hostPort: $reason")
+      logError(s"Lost executor "+appId+"/"+executorId+" on $hostPort: $reason")
   }
 
   /**
@@ -546,12 +551,12 @@ private[spark] class TaskSchedulerImpl(
    * reason is not yet known, do not yet remove its association with its host nor update the status
    * of any running tasks, since the loss reason defines whether we'll fail those tasks.
    */
-  private def removeExecutor(executorId: String, reason: ExecutorLossReason) {
-    executorIdToTaskCount -= executorId
+  private def removeExecutor(appId: ApplicationId, executorId: String, reason: ExecutorLossReason) {
+    executorIdToTaskCount -= ((appId, executorId))
 
-    val host = executorIdToHost(executorId)
+    val host = executorIdToHost(appId, executorId)
     val execs = executorsByHost.getOrElse(host, new HashSet)
-    execs -= executorId
+    execs -= ((appId, executorId))
     if (execs.isEmpty) {
       executorsByHost -= host
       for (rack <- getRackForHost(host); hosts <- hostsByRack.get(rack)) {
@@ -563,7 +568,7 @@ private[spark] class TaskSchedulerImpl(
     }
 
     if (reason != LossReasonPending) {
-      executorIdToHost -= executorId
+      executorIdToHost -= ((appId, executorId))
       rootPool.executorLost(executorId, host, reason)
     }
   }
@@ -572,7 +577,7 @@ private[spark] class TaskSchedulerImpl(
     dagScheduler.executorAdded(execId, host)
   }
 
-  def getExecutorsAliveOnHost(host: String): Option[Set[String]] = synchronized {
+  def getExecutorsAliveOnHost(host: String): Option[Set[(ApplicationId, ExecutorId)]] = synchronized {
     executorsByHost.get(host).map(_.toSet)
   }
 
@@ -584,12 +589,12 @@ private[spark] class TaskSchedulerImpl(
     hostsByRack.contains(rack)
   }
 
-  def isExecutorAlive(execId: String): Boolean = synchronized {
-    executorIdToTaskCount.contains(execId)
+  def isExecutorAlive(appId: ApplicationId, execId: String): Boolean = synchronized {
+    executorIdToTaskCount.contains(appId, execId)
   }
 
-  def isExecutorBusy(execId: String): Boolean = synchronized {
-    executorIdToTaskCount.getOrElse(execId, -1) > 0
+  def isExecutorBusy(appId: ApplicationId, execId: String): Boolean = synchronized {
+    executorIdToTaskCount.getOrElse((appId, execId), -1) > 0
   }
 
   // By default, rack is unknown
