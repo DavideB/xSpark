@@ -62,6 +62,7 @@ class ControllerExecutor
       logInfo("SP Updated: " + SP.toString)
       logInfo("Real: " + (completedTasks / tasks).toString)
       logInfo("CoreToAllocate: " + nextCore.toString)
+      logInfo("Remaining tasks: " + (tasks-completedTasks))
 
       if (nextCore != oldCore) {
         oldCore = nextCore
@@ -83,7 +84,7 @@ class ControllerExecutor
     }
     else {
       val csi = csiOld + K * (Ts.toDouble / Ti) * (SP - (completedTasks / tasks))
-      cs = math.min(math.min(coreMax.toDouble, math.max(coreMin.toDouble, csp + csi)), tasks-completedTasks)
+      cs = math.min(math.min(coreMax.toDouble, math.max(coreMin.toDouble, csp + csi)), (tasks-completedTasks))
     }
     cs = math.ceil(cs / CQ) * CQ
     csiOld = cs - csp
