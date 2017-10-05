@@ -479,6 +479,13 @@ private[deploy] class Worker(
         try {
           logInfo("Asked to launch executor %s/%d for %s".format(appId, execId, appDesc.name))
 
+          logInfo("COMMAND USED TO LAUNCH EXE")
+          logInfo("arguments: " + appDesc.command.arguments.mkString("(", ",", ")"))
+          logInfo("classPathEntries: " + appDesc.command.classPathEntries.mkString("(", ",", ")"))
+          logInfo("javaOpts: " + appDesc.command.javaOpts.mkString("(", ",", ")"))
+          logInfo("environment: " + appDesc.command.environment.toString())
+
+
           // todo: resize other executor
           // note: calculated in mega bytes
           val offHeapMemory: Long = (memoryFree - memory_) / (execIdToProxy.size + 1)
