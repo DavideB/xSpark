@@ -519,12 +519,11 @@ private[deploy] class Worker(
           execIdToProxy(execId.toString) = controllerProxy
           logInfo("PROXY ADDRESS:" + controllerProxy.getAddress)
           // scalastyle:off line.size.limit
-          var appDescProxed = appDesc.copy(command =
+          val appDescProxed = appDesc.copy(command =
             Worker.changeDriverToProxy(appDesc.command, execIdToProxy(execId.toString).getAddress))
           logInfo(appDescProxed.command.toString)
           // update value with the one calculated earlier
           conf.set("spark.memory.offHeap.size", (offHeapMemory*1000000).toString)
-          appDescProxed = appDescProxed.copy(command = Worker.changeOffHeap(appDescProxed.command, offHeapMemory*1000000))
           val offHeapMemoryForDocker = if (conf.getBoolean("spark.memory.offHeap.enabled", false)) {
             offHeapMemory
           } else {
@@ -909,9 +908,5 @@ private[deploy] object Worker extends Logging {
 
   def changeDriverToProxy(cmd: Command, proxyUrl: String): Command = {
     cmd.copy(arguments = cmd.arguments.updated(1, proxyUrl))
-  }
-
-  def changeOffHeap(cmd: Command, offheap: Long): Command = {
-    cmd.copy(javaOpts = cmd.javaOpts ++ Seq("-Dspark.memory.offHeap.size="+offheap))
   }
 }
