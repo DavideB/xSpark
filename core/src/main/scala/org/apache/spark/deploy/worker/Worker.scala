@@ -912,6 +912,7 @@ private[deploy] object Worker extends Logging {
   }
 
   def changeOffHeap(cmd: Command, offheap: Long): Command = {
-    cmd.copy(arguments = cmd.arguments ++ Seq("--offheap "+offheap))
+    cmd.copy(arguments = cmd.arguments ++ Seq("--conf spark.memory.offHeap.size="+offheap))
+//    cmd.copy(javaOpts = cmd.javaOpts ++ Seq("-Dspark.memory.offHeap.size="+offheap))
   }
 }

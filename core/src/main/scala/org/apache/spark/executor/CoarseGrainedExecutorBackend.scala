@@ -171,8 +171,7 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
       cores: Int,
       appId: String,
       workerUrl: Option[String],
-      userClassPath: Seq[URL],
-      offheap: Long) {
+      userClassPath: Seq[URL]) {
 
     Utils.initDaemon(log)
 
@@ -182,9 +181,6 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
 
       // Bootstrap to fetch the driver's Spark properties.
       val executorConf = new SparkConf
-      if(offheap > 0){
-        executorConf.set("spark.memory.offHeap.size", offheap.toString)
-      }
       val port = executorConf.getInt("spark.executor.port", 0)
       val fetcher = RpcEnv.create(
         "driverPropsFetcher",
@@ -235,7 +231,6 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
     var appId: String = null
     var workerUrl: Option[String] = None
     val userClassPath = new mutable.ListBuffer[URL]()
-    var offheap: Long = 0
 
     var argv = args.toList
     while (!argv.isEmpty) {
@@ -262,9 +257,6 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
         case ("--user-class-path") :: value :: tail =>
           userClassPath += new URL(value)
           argv = tail
-        case ("--offheap") :: value :: tail =>
-          offheap = value.toInt
-          argv = tail
         case Nil =>
         case tail =>
           // scalastyle:off println
@@ -279,7 +271,7 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
       printUsageAndExit()
     }
 
-    run(driverUrl, executorId, hostname, cores, appId, workerUrl, userClassPath, offheap)
+    run(driverUrl, executorId, hostname, cores, appId, workerUrl, userClassPath)
     System.exit(0)
   }
 
