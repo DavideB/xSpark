@@ -554,6 +554,7 @@ private[deploy] class Worker(
           applicationIdToCoresUsed(appId) = applicationIdToCoresUsed(appId) + cores_
           memoryUsed += memory_
           applicationIdToMemoryUsed(appId) = applicationIdToMemoryUsed(appId) + memory_
+          controllerProxy.proxyEndpoint.send(ResizeOffHeapMemory(offHeapMemory*1000000))
           sendToMaster(ExecutorStateChanged(appId, execId, manager.state, None, None))
           // scalastyle:on line.size.limit
         } catch {
