@@ -75,7 +75,8 @@ class HeuristicControl(conf: SparkConf) extends HeuristicBase(conf) with Logging
                                     stageDuration: Long,
                                     stageId : Int,
                                     firstStage : Boolean = false): Long = {
-
+    logInfo("computeDeadlineStage(startTime="+startTime+", appDeadJobMilli="+appDeadlineJobMilliseconds+", totalStageRemaining="+totalStageRemaining+", " +
+      "totalDurationRemaining="+totalDurationRemaining+", stageDuration="+stageDuration+", sid="+stageId+", firstStage="+firstStage)
     val weight = computeWeightStage(stageId, totalStageRemaining, totalDurationRemaining, stageDuration)
     computeDeadlineStageWeightGiven(startTime, appDeadlineJobMilliseconds, weight, stageId, firstStage)
   }
@@ -122,7 +123,10 @@ class HeuristicControl(conf: SparkConf) extends HeuristicBase(conf) with Logging
   }
 
   override def computeDeadlineStageWeightGiven(startTime: Long, appDeadlineJobMilliseconds: Long, weight: Double, stageId: Int, firstStage: Boolean): Long = {
+    logInfo("computeDeadlineStageWeightGiven(startTime="+startTime+", appDeadJobMilli="+appDeadlineJobMilliseconds+", weight="+weight+", " +
+      " sid="+stageId+", firstStage="+firstStage)
     var stageDeadline = ((appDeadlineJobMilliseconds - startTime) / (weight + 1)).toLong
+    logInfo("Stage deadline: "+stageDeadline)
     if (stageDeadline < 0) {
       if(firstStage){
         logError("DEADLINE NEGATIVE -> DEADLINE NOT SATISFIED")
