@@ -169,6 +169,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
                 executorDataMap(execId) = new ExecutorData(executorData.executorEndpoint,
                   executorData.executorAddress, executorData.executorHost,
                   newFreeCores, math.ceil(cores).toInt, executorData.logUrlMap)
+                logInfo("DEBUG: executorScaled "+execId+" "+executorDataMap)
                 makeOffers(execId)
               case None =>
                 logWarning(s"Scaled not registered executorID $execId")
@@ -205,6 +206,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
           // in this block are read when requesting executors
           CoarseGrainedSchedulerBackend.this.synchronized {
             executorDataMap.put(executorId, data)
+            logInfo("DEBUG: added "+executorId+" to executorDataMap "+executorDataMap)
             if (currentExecutorIdCounter < executorId.toInt) {
               currentExecutorIdCounter = executorId.toInt
             }
@@ -247,6 +249,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     // Make fake resource offers on all binded executors
     private def makeOffers() {
       // Filter out executors under killing
+      logInfo("DEBUG: makeOffers() executorDataMap " + executorDataMap)
       val activeExecutors = executorDataMap.filterKeys(executorIsAlive).filterKeys(x => scheduler.execIdToTaskSet(x) != -1)
       val workOffers = activeExecutors.map { case (id, executorData) =>
         new WorkerOffer(id, executorData.executorHost, executorData.freeCores)
@@ -266,6 +269,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     private def makeOffers(executorId: String) {
       // Filter out executors under killing
       if (executorIsAlive(executorId) && scheduler.execIdToTaskSet(executorId) != -1) {
+        logInfo("DEBUG: makeOffers("+executorId+") executorDataMap " + executorDataMap)
         val executorData = executorDataMap(executorId)
         val workOffers = Seq(
           new WorkerOffer(executorId, executorData.executorHost, executorData.freeCores))
@@ -321,6 +325,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
             executorsPendingLossReason -= executorId
             executorsPendingToRemove.remove(executorId).getOrElse(false)
           }
+          logInfo("DEBUG: removed executor "+executorId+ " from exec data map "+ executorDataMap)
           totalCoreCount.addAndGet(-executorInfo.totalCores)
           totalRegisteredExecutors.addAndGet(-1)
           scheduler.executorLost(executorId, if (killed) ExecutorKilled else reason)
