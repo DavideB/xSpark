@@ -171,7 +171,7 @@ private[deploy] class Worker(
   var memoryUsed = 0
 
   def coresFree: Int = cores - coresUsed
-  def memoryFree: Int = (memory*0.9).toInt - memoryUsed
+  def memoryFree: Int = memory - memoryUsed
 
   val applicationIdToCoresUsed = new mutable.HashMap[ApplicationId, Int]().withDefaultValue(0)
   val applicationIdToMemoryUsed = new mutable.HashMap[ApplicationId, Int]().withDefaultValue(0)
