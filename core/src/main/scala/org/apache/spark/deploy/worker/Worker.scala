@@ -483,8 +483,8 @@ private[deploy] class Worker(
 
           // todo: resize other executor
           // note: calculated in mega bytes
-          val offHeapMemory: Long = (memoryFree - memory_) / (execIdToProxy.size + 1)
-          logInfo("Resizing memory: now ("+(execIdToProxy.size)+", "+memoryFree+"), next ("+(execIdToProxy.size + 1)+", "+(memoryFree - memory_)+")")
+          val offHeapMemory: Long = math.max((memory - memoryUsed - 10240 - memory_) / (execIdToProxy.size + 1), 1)
+          logInfo("Resizing memory: now ("+(execIdToProxy.size)+", "+(memory - memoryUsed - 10240)+"), next ("+(execIdToProxy.size + 1)+", "+(memory - memoryUsed - 10240 - memory_)+")")
           execIdToProxy.foreach { case (id, proxy) =>
             proxy.proxyEndpoint.send(ResizeOffHeapMemory(offHeapMemory*1000000))
           }
@@ -589,7 +589,7 @@ private[deploy] class Worker(
 
             // todo: resize other executors
             if (execIdToProxy.size > 0) {
-              val offHeapMemory: Long = (memoryFree.toLong + executor.memory) / execIdToProxy.size
+              val offHeapMemory: Long = math.max((memory - memoryUsed - 10240 + executor.memory) / execIdToProxy.size, 1)
               logInfo("Resizing memory: now ("+(execIdToProxy.size)+", "+(memoryFree.toLong + executor.memory)+")")
               execIdToProxy.foreach { case (id, proxy) =>
                 proxy.proxyEndpoint.send(ResizeOffHeapMemory(offHeapMemory*1000000))
